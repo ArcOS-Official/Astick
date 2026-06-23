@@ -1,0 +1,44 @@
+[
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/Astick_autogen/mocs_compilation.cpp.o -c /home/kernelstate/personal/Astick/build/Astick_autogen/mocs_compilation.cpp",
+  "file": "/home/kernelstate/personal/Astick/build/Astick_autogen/mocs_compilation.cpp",
+  "output": "CMakeFiles/Astick.dir/Astick_autogen/mocs_compilation.cpp.o"
+},
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/src/main.cpp.o -c /home/kernelstate/personal/Astick/src/main.cpp",
+  "file": "/home/kernelstate/personal/Astick/src/main.cpp",
+  "output": "CMakeFiles/Astick.dir/src/main.cpp.o"
+},
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/src/compositor.cpp.o -c /home/kernelstate/personal/Astick/src/compositor.cpp",
+  "file": "/home/kernelstate/personal/Astick/src/compositor.cpp",
+  "output": "CMakeFiles/Astick.dir/src/compositor.cpp.o"
+},
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/src/output.cpp.o -c /home/kernelstate/personal/Astick/src/output.cpp",
+  "file": "/home/kernelstate/personal/Astick/src/output.cpp",
+  "output": "CMakeFiles/Astick.dir/src/output.cpp.o"
+},
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/src/debug.cpp.o -c /home/kernelstate/personal/Astick/src/debug.cpp",
+  "file": "/home/kernelstate/personal/Astick/src/debug.cpp",
+  "output": "CMakeFiles/Astick.dir/src/debug.cpp.o"
+},
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/src/application.cpp.o -c /home/kernelstate/personal/Astick/src/application.cpp",
+  "file": "/home/kernelstate/personal/Astick/src/application.cpp",
+  "output": "CMakeFiles/Astick.dir/src/application.cpp.o"
+},
+{
+  "directory": "/home/kernelstate/personal/Astick/build",
+  "command": "/usr/bin/c++ -DQT_CORE_LIB -I/home/kernelstate/personal/Astick/build/Astick_autogen/include -isystem /usr/include/wlroots-0.19 -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/pixman-1 -isystem /usr/include/libdrm -g -std=gnu++23 -Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla -mno-direct-extern-access -o CMakeFiles/Astick.dir/src/util.cpp.o -c /home/kernelstate/personal/Astick/src/util.cpp",
+  "file": "/home/kernelstate/personal/Astick/src/util.cpp",
+  "output": "CMakeFiles/Astick.dir/src/util.cpp.o"
+}
+]
