@@ -1,11 +1,12 @@
 #include "popup.h"
 #include "compositor.h"
 #include "util.h"
+#include <cstdio>
 
 void handle_popup_commit(wl_listener *listener, void *)
 {
     Popup *self = wl_container_of(listener, self, commit);
-    if (self->popup->base->initial_commit) {
+    if (self->mapped && self->popup->base->initial_commit) {
         wlr_xdg_surface_schedule_configure(self->popup->base);
     }
     emit self->committed();
