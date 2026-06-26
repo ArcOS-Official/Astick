@@ -9,20 +9,27 @@ class Output : public QObject
     Q_OBJECT
 
 public:
-    explicit Output(struct wlr_output *output_);
-    wlr_output *get() const;
-    friend void onFrame(struct wl_listener *listener, void *_);
-    friend void onDestroy(struct wl_listener *listener, void *_);
+    Output(
+        struct wlr_output *output_,
+        struct wlr_renderer *renderer,
+        struct wlr_allocator *allocator,
+        struct wlr_scene *scene_
+    );
+    struct wlr_output *get() const;
+
+    friend void onFrame(struct wl_listener *listener, void *data);
+    friend void onRequestState(struct wl_listener *listener, void *data);
+    friend void onDestroy(struct wl_listener *listener, void *data);
+
 signals:
-    void beforeDestroy();
-    void frame();
+    void frameReady();
+    void destroyed();
 
 private:
     struct wlr_output *output;
     std::timespec lastFrame;
-    struct wl_listener onDestroyListener;
-    struct wl_listener onFrameListener;
     struct wlr_scene *scene;
+    struct wl_listener frameListener;
+    struct wl_listener requestStateListener;
+    struct wl_listener destroyListener;
 };
-
-void OutputFrame(Output *output);

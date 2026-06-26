@@ -1,6 +1,8 @@
 #include "debug.h"
 #include "wlroots.h"
 #include <print>
+#include <cstdio>
+#include <vector>
 
 
 Debugger::Debugger()
@@ -20,14 +22,22 @@ QString Debugger::lastInfo()
 
 void handler(enum wlr_log_importance importance, const char *fmt, va_list args)
 {
-    const QString log = QString::vasprintf(fmt, args);
+    va_list copy;
+    va_copy(copy, args);
+    int len = std::vsnprintf(nullptr, 0, fmt, copy);
+    va_end(copy);
+
+    std::vector<char> buf(static_cast<size_t>(len) + 1);
+    std::vsnprintf(buf.data(), buf.size(), fmt, args);
+
+    const QString log = QString::fromUtf8(buf.data());
     std::println("{}", log.toStdString());
     switch (importance) {
         case WLR_ERROR:
             debugger.errors.append(log);
             break;
         case WLR_INFO:
-            debugger.errors.append(log);
+            debugger.info.append(log);
             break;
         default:
             break;

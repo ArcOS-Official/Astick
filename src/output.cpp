@@ -5,40 +5,34 @@
 
 void onFrame(struct wl_listener *listener, void *)
 {
-    wlr_log(WLR_INFO, "rendering frame");
-    Output *self = wl_container_of(listener, self, onFrameListener);
-    //struct wlr_scene_output *output =
-    //    wlr_scene_get_scene_output(self->scene, self->output);
-    //wlr_scene_output_commit(output, {});
-    //clock_gettime(CLOCK_MONOTONIC, &self->lastFrame);
-    struct wlr_output_state state;
-    wlr_output_state_init(&state);
-    wlr_render_pass *pass = wlr_output_begin_render_pass(
-        self->output,
-        &state,
-        {}
-    );
-    const struct wlr_render_rect_options opts = {
-        .box = {
-            .x = 0,
-            .y = 0,
-            .width = self->output->width,
-            .height = self->output->height
-        },
-        .color = { .r = 255, .g = 0, .b = 0, .a = 1.0f },
-        .clip = {},
-        .blend_mode = {},
-    };
-    wlr_render_pass_add_rect(pass, &opts);
-    if (!wlr_render_pass_submit(pass)) {
-        throw std::runtime_error("Failed to get render pass");
+    Output *self = wl_container_of(listener, self, frameListener);
+    struct wlr_scene *scene = self->scene;
+    struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(scene, self->output);
+    if (scene_output) {
+        wlr_scene_output_commit(scene_output, nullptr);
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        wlr_scene_output_send_frame_done(scene_output, &now);
     }
-    std::timespec_get(&self->lastFrame, TIME_UTC);
+    emit self->frameReady();
+}
+
+void onRequestState(struct wl_listener *listener, void *data)
+{
+    Output *self = wl_container_of(listener, self, requestStateListener);
+    const struct wlr_output_event_request_state *event =
+        (const struct wlr_output_event_request_state *)data;
+    wlr_output_commit_state(self->output, event->state);
 }
 
 void onDestroy(struct wl_listener *listener, void *)
 {
-    Output *self = wl_container_of(listener, self, onDestroyListener);
+    Output *self = wl_container_of(listener, self, destroyListener);
+    wl_list_remove(&self->frameListener.link);
+    wl_list_remove(&self->requestStateListener.link);
+    wl_list_remove(&self->destroyListener.link);
+    emit self->destroyed();
+    delete self;
 }
 
 Output::Output(
@@ -49,17 +43,17 @@ Output::Output(
 )
 {
     output = output_;
-    wlr_log(WLR_INFO, "intialized output of size %dx%d", output->width, output->height);
+    scene = scene_;
+    wlr_log(WLR_INFO, "initialized output of size %dx%d", output->width, output->height);
     wlr_output_init_render(output, allocator, renderer);
     wlr_output_schedule_frame(output);
-    scene = scene_;
-    signal(onFrameListener, &output->events.frame, &onFrame);
-    signal(onFrameListener, &output->events.needs_frame, &onFrame);
-    signal(onFrameListener, &output->events.damage, &onFrame);
-    signal(onDestroyListener, &output->events.destroy, &onDestroy);
+
+    signal(frameListener, &output->events.frame, onFrame);
+    signal(requestStateListener, &output->events.request_state, onRequestState);
+    signal(destroyListener, &output->events.destroy, onDestroy);
 }
 
-wlr_output *Output::get() const
+struct wlr_output *Output::get() const
 {
     return output;
 }
