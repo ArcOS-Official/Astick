@@ -37,20 +37,22 @@ void handle_newOutput(wl_listener *listener, void *data)
 
 void handle_newXdgToplevelNotify(wl_listener *listener, void *data)
 {
-
     Compositor *self = getComp(self, newOutput);
+    struct wlr_xdg_toplevel *xtoplevel = (struct wlr_xdg_toplevel *)data;
+    Toplevel *toplevel = new Toplevel(self, xtoplevel, wlr_scene_xdg_surface_create(
+        &self->scene->tree, xtoplevel->base
+    ));
+    self->toplevels.append(toplevel);
 }
 
 void handle_newXdgPopupNotify(wl_listener *listener, void *data)
 {
-
     Compositor *self = getComp(self, newOutput);
+    struct wlr_xdg_popup *xpopup = (struct wlr_xdg_popup *)data;
+    self->popups.append(new Popup(self, xpopup));
 }
-void handle_cursorMotion(wl_listener *listener, void *data)
-{
-    Compositor *self = getComp(self, newOutput);
 
-}
+void handle_cursorMotion(wl_listener *listener, void *data);
 void handle_cursorMotionAbsolute(wl_listener *listener, void *data);
 void handle_cursorButton(wl_listener *listener, void *data);
 void handle_cursorAxis(wl_listener *listener, void *data);
@@ -72,6 +74,56 @@ void handle_newInput(wl_listener *listener, void *data)
         default:
             wlr_log(WLR_ERROR, "Unsupported device %s", device->name);
     }
+}
+
+void handle_map(wl_listener *listener, void *data);
+void handle_unmap(wl_listener *listener, void *data);
+void handle_commit(wl_listener *listener, void *data);
+void handle_destroy(wl_listener *listener, void *data);
+
+Toplevel::Toplevel(
+    Compositor *server_,
+    struct wlr_xdg_toplevel *toplevel_,
+    struct wlr_scene_tree *sceneTree_
+)
+{
+    toplevel = toplevel_;
+    sceneTree = sceneTree_;
+    server = server_;
+    sceneTree->node.data = this;
+    sceneTree->node.data = this;
+    toplevel->base->data = (void *)sceneTree;
+    signal(map, &toplevel->base->surface->events.map, handle_map);
+    signal(unmap, &toplevel->base->surface->events.unmap, handle_unmap);
+    signal(commit, &toplevel->base->surface->events.commit, handle_commit);
+    signal(destroy, &toplevel->events.destroy, handle_destroy);
+}
+
+void handle_commit(wl_listener *listener, void *data);
+void handle_destroy(wl_listener *listener, void *data);
+
+void Popup::activate()
+{
+    parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
+    if (parent == NULL) {
+        wlr_log(WLR_ERROR, "Popup got orphaned, skipping");
+        emit closed();
+    }
+    struct wlr_scene_tree *parent_tree = (struct wlr_scene_tree *)parent->data;
+    popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+    signal(commit, &popup->base->surface->events.commit, handle_commit);
+    signal(destroy, &popup->base->surface->events.destroy, handle_destroy);
+}
+void Popup::closed()
+{}
+
+Popup::Popup(
+    Compositor *server_,
+    struct wlr_xdg_popup *popup_
+)
+{
+    server = server_;
+    popup = popup_;
 }
 
 Compositor::Compositor(const Astick &app)
