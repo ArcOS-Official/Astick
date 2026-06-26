@@ -21,6 +21,10 @@ add_compile_options(-Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla)
 set(SOURCES
     src/main.cpp
     src/compositor.cpp
+    src/toplevel.cpp
+    src/popup.cpp
+    src/cursor.cpp
+    src/layout.cpp
     src/output.cpp
     src/debug.cpp
     src/application.cpp

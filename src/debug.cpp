@@ -31,7 +31,12 @@ void handler(enum wlr_log_importance importance, const char *fmt, va_list args)
     std::vsnprintf(buf.data(), buf.size(), fmt, args);
 
     const QString log = QString::fromUtf8(buf.data());
-    std::println("{}", log.toStdString());
+    const char *prefix;
+    if (importance == WLR_ERROR)
+        prefix = "ERROR";
+    else
+        prefix = "INFO";
+    std::println("{}: {}", prefix, log.toStdString());
     switch (importance) {
         case WLR_ERROR:
             debugger.errors.append(log);
