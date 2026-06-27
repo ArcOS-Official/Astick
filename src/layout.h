@@ -28,6 +28,7 @@ public:
     void addWindow(Toplevel *toplevel, int workspace);
     void removeWindow(Toplevel *toplevel);
     int getWindowWorkspace(Toplevel *toplevel) const;
+    void raiseWindow(Toplevel *toplevel);
 
     void arrange(struct wlr_output *output, int workspace);
 

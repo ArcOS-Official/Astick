@@ -199,11 +199,13 @@ void Compositor::focusToplevel(Toplevel *toplevel)
     toplevels.removeOne(toplevel);
     toplevels.prepend(toplevel);
     wlr_xdg_toplevel_set_activated(toplevel->get(), true);
+    layout->raiseWindow(toplevel);
 
     int ws = layout->getWindowWorkspace(toplevel);
     if (ws > 0) {
         for (Output *out : outputs) {
-            if (out->getWorkspace() == ws)
+            if (out->getWorkspace() == ws &&
+                layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::MonoWindow)
                 layout->arrange(out->get(), ws);
         }
     }

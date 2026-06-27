@@ -51,6 +51,19 @@ void LayoutManager::removeWindow(Toplevel *toplevel)
     }
 }
 
+void LayoutManager::raiseWindow(Toplevel *toplevel)
+{
+    for (auto &ws : workspaces) {
+        for (int i = 0; i < ws.windows.size(); i++) {
+            if (ws.windows[i].toplevel == toplevel) {
+                auto state = ws.windows.takeAt(i);
+                ws.windows.prepend(state);
+                return;
+            }
+        }
+    }
+}
+
 int LayoutManager::getWindowWorkspace(Toplevel *toplevel) const
 {
     for (const auto &ws : workspaces) {
@@ -144,6 +157,7 @@ void LayoutManager::arrangeTiling(Workspace *ws, struct wlr_output *output)
         w.height = cell_h;
         w.positioned = true;
         applyWindowGeometry(&w);
+        wlr_scene_node_set_enabled(&w.toplevel->getSceneTree()->node, true);
     }
 }
 
@@ -158,6 +172,7 @@ void LayoutManager::arrangeFloating(Workspace *ws, struct wlr_output *output)
             w.positioned = true;
             applyWindowGeometry(&w);
         }
+        wlr_scene_node_set_enabled(&w.toplevel->getSceneTree()->node, true);
     }
 }
 
