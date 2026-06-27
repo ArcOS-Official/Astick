@@ -75,3 +75,11 @@ struct wlr_output *Output::get() const
 {
     return output;
 }
+
+void Output::setWorkspace(int ws)
+{
+    if (ws == workspace || ws < 1) return;
+    int old = workspace;
+    workspace = ws;
+    emit workspaceChanged(old, ws);
+}

@@ -50,6 +50,7 @@ public:
     QList<Output *> &getOutputs() { return outputs; }
 
     void focusToplevel(Toplevel *toplevel);
+    Output *outputForToplevel(Toplevel *toplevel);
 
 public slots:
     void run();
@@ -95,7 +96,7 @@ private:
     QList<Popup *> popups;
 
     CursorManager *cursorMgrObj = nullptr;
-    TilingLayout *layout = nullptr;
+    LayoutManager *layout = nullptr;
 
     struct wl_listener newOutputListener;
     struct wl_listener newXdgToplevelNotifyListener;

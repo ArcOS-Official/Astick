@@ -34,6 +34,8 @@ public:
         struct wlr_scene *scene_
     );
     struct wlr_output *get() const;
+    int getWorkspace() const { return workspace; }
+    void setWorkspace(int ws);
 
     friend void onFrame(struct wl_listener *listener, void *data);
     friend void onRequestState(struct wl_listener *listener, void *data);
@@ -42,9 +44,11 @@ public:
 signals:
     void frameReady();
     void destroyed();
+    void workspaceChanged(int oldWorkspace, int newWorkspace);
 
 private:
     struct wlr_output *output;
+    int workspace = 1;
     std::timespec lastFrame;
     struct wlr_scene *scene;
     struct wl_listener frameListener;

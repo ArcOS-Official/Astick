@@ -83,6 +83,14 @@ void Compositor::onOutputAdded(struct wlr_output *output)
     Output *out = new Output(output, renderer, allocator, scene);
     outputs.append(out);
 
+    connect(out, &Output::workspaceChanged, this, [this, out](int oldWs, int newWs) {
+        layout->deactivateWorkspace(oldWs);
+        layout->activateWorkspace(newWs);
+        layout->arrange(out->get(), newWs);
+    });
+
+    layout->activateWorkspace(out->getWorkspace());
+
     struct wlr_output_layout_output *lout =
         wlr_output_layout_add_auto(outputLayout, output);
     struct wlr_scene_output *rout = wlr_scene_output_create(scene, output);
@@ -142,8 +150,12 @@ void Compositor::onInputAdded(struct wlr_input_device *device)
 void Compositor::onToplevelMapped(Toplevel *toplevel)
 {
     focusToplevel(toplevel);
-    if (!outputs.isEmpty())
-        layout->arrange(outputs.first()->get(), toplevels);
+    int ws = outputs.isEmpty() ? 1 : outputs.first()->getWorkspace();
+    layout->addWindow(toplevel, ws);
+    for (Output *out : outputs) {
+        if (out->getWorkspace() == ws)
+            layout->arrange(out->get(), ws);
+    }
     emit toplevelMapped(toplevel);
 }
 
@@ -153,8 +165,14 @@ void Compositor::onToplevelUnmapped(Toplevel *toplevel)
         cursorMgrObj->resetMode();
     }
     toplevels.removeOne(toplevel);
-    if (!outputs.isEmpty())
-        layout->arrange(outputs.first()->get(), toplevels);
+    int ws = layout->getWindowWorkspace(toplevel);
+    layout->removeWindow(toplevel);
+    if (ws > 0) {
+        for (Output *out : outputs) {
+            if (out->getWorkspace() == ws)
+                layout->arrange(out->get(), ws);
+        }
+    }
     emit toplevelUnmapped(toplevel);
 }
 
@@ -182,10 +200,24 @@ void Compositor::focusToplevel(Toplevel *toplevel)
     toplevels.prepend(toplevel);
     wlr_xdg_toplevel_set_activated(toplevel->get(), true);
 
+    int ws = layout->getWindowWorkspace(toplevel);
+    if (ws > 0) {
+        for (Output *out : outputs) {
+            if (out->getWorkspace() == ws)
+                layout->arrange(out->get(), ws);
+        }
+    }
+
     if (keyboard != nullptr) {
         wlr_seat_keyboard_notify_enter(seat, surface,
             keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
     }
+}
+
+Output *Compositor::outputForToplevel(Toplevel *)
+{
+    if (outputs.isEmpty()) return nullptr;
+    return outputs.first();
 }
 
 // Input device helpers
@@ -216,6 +248,35 @@ void Compositor::addKeyboard(struct wlr_input_device *device)
                     }
                     handled = true;
                     break;
+                case XKB_KEY_F2: {
+                    if (outputs.isEmpty()) break;
+                    Output *out = outputs.first();
+                    int ws = out->getWorkspace();
+                    auto mode = layout->getWorkspaceLayoutMode(ws);
+                    int next = ((int)mode + 1) % 3;
+                    layout->setWorkspaceLayoutMode(ws, (LayoutManager::Mode)next);
+                    layout->arrange(out->get(), ws);
+                    handled = true;
+                    break;
+                }
+                case XKB_KEY_F3: {
+                    if (outputs.isEmpty()) break;
+                    Output *out = outputs.first();
+                    int newWs = layout->createWorkspace();
+                    out->setWorkspace(newWs);
+                    handled = true;
+                    break;
+                }
+                case XKB_KEY_F4: {
+                    if (outputs.isEmpty()) break;
+                    Output *out = outputs.first();
+                    int ws = out->getWorkspace();
+                    if (ws > 1) {
+                        out->setWorkspace(1);
+                    }
+                    handled = true;
+                    break;
+                }
                 default:
                     break;
                 }
@@ -285,7 +346,7 @@ Compositor::Compositor(const Astick &app)
     seat = wlr_seat_create(display, "seat0");
 
     cursorMgrObj = new CursorManager(this);
-    layout = new TilingLayout();
+    layout = new LayoutManager();
 
     socket = QString(wl_display_add_socket_auto(display));
     wlr_log(WLR_INFO, "Successfully initialized on socket %s", socket.toUtf8().data());

@@ -1,36 +1,61 @@
-/*
- *  Astick, the wayland compositor for ArcDE.
- *  Copyright (C) 2026 Eyad Ahmed Ragheb
-
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
-
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
-
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
-
 #pragma once
 
 #include <QObject>
-#include <qobject.h>
 #include <QList>
+#include <QMap>
+#include <qobject.h>
 #include "wlroots.h"
 
 class Toplevel;
 
-class TilingLayout : public QObject
+class LayoutManager : public QObject
 {
     Q_OBJECT
 
 public:
-    TilingLayout();
+    enum class Mode {
+        Tiling,
+        Floating,
+        MonoWindow,
+    };
 
-    void arrange(struct wlr_output *output, const QList<Toplevel *> &toplevels);
+    LayoutManager();
+
+    int createWorkspace();
+    void setWorkspaceLayoutMode(int workspace, Mode mode);
+    Mode getWorkspaceLayoutMode(int workspace) const;
+
+    void addWindow(Toplevel *toplevel, int workspace);
+    void removeWindow(Toplevel *toplevel);
+    int getWindowWorkspace(Toplevel *toplevel) const;
+
+    void arrange(struct wlr_output *output, int workspace);
+
+    void activateWorkspace(int workspace);
+    void deactivateWorkspace(int workspace);
+
+private:
+    struct WindowState {
+        Toplevel *toplevel;
+        bool positioned;
+        int x, y;
+        int width, height;
+    };
+
+    struct Workspace {
+        int id;
+        Mode mode;
+        QList<WindowState> windows;
+    };
+
+    QList<Workspace> workspaces;
+    QMap<int, int> workspaceRefs;
+    int nextId = 1;
+
+    Workspace *findWorkspace(int id);
+    Workspace *findWorkspaceByWindow(Toplevel *toplevel);
+    void arrangeTiling(Workspace *ws, struct wlr_output *output);
+    void arrangeFloating(Workspace *ws, struct wlr_output *output);
+    void arrangeMonoWindow(Workspace *ws, struct wlr_output *output);
+    void applyWindowGeometry(WindowState *state);
 };
