@@ -222,6 +222,17 @@ Output *Compositor::outputForToplevel(Toplevel *)
     return outputs.first();
 }
 
+void Compositor::setInitialLayoutMode(const QString &mode)
+{
+    QString m = mode.toLower().trimmed();
+    LayoutManager::Mode lm = LayoutManager::Mode::Tiling;
+    if (m == "floating")
+        lm = LayoutManager::Mode::Floating;
+    else if (m == "monowindow")
+        lm = LayoutManager::Mode::MonoWindow;
+    layout->setWorkspaceLayoutMode(1, lm);
+}
+
 // Input device helpers
 
 void Compositor::addKeyboard(struct wlr_input_device *device)

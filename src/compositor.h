@@ -51,6 +51,7 @@ public:
 
     void focusToplevel(Toplevel *toplevel);
     Output *outputForToplevel(Toplevel *toplevel);
+    void setInitialLayoutMode(const QString &mode);
 
 public slots:
     void run();
