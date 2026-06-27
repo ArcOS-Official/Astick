@@ -26,6 +26,7 @@ public:
     Mode getWorkspaceLayoutMode(int workspace) const;
 
     void addWindow(Toplevel *toplevel, int workspace);
+    void prependWindow(Toplevel *toplevel, int workspace);
     void removeWindow(Toplevel *toplevel);
     int getWindowWorkspace(Toplevel *toplevel) const;
     void raiseWindow(Toplevel *toplevel);

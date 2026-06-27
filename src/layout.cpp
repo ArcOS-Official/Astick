@@ -39,6 +39,13 @@ void LayoutManager::addWindow(Toplevel *toplevel, int workspace)
     ws->windows.append({ toplevel, false, 0, 0, 0, 0 });
 }
 
+void LayoutManager::prependWindow(Toplevel *toplevel, int workspace)
+{
+    Workspace *ws = findWorkspace(workspace);
+    if (!ws) return;
+    ws->windows.prepend({ toplevel, false, 0, 0, 0, 0 });
+}
+
 void LayoutManager::removeWindow(Toplevel *toplevel)
 {
     for (auto &ws : workspaces) {

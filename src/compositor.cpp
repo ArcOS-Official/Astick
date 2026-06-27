@@ -90,6 +90,7 @@ void Compositor::onOutputAdded(struct wlr_output *output)
     });
 
     layout->activateWorkspace(out->getWorkspace());
+    rearrangeTiled();
 
     struct wlr_output_layout_output *lout =
         wlr_output_layout_add_auto(outputLayout, output);
@@ -112,15 +113,24 @@ void Compositor::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
     });
     connect(toplevel, &Toplevel::moveRequested, this, [this, toplevel]() {
         cursorMgrObj->beginInteractive(toplevel, CURSOR_MOVE, 0);
+        int ws = layout->getWindowWorkspace(toplevel);
+        if (ws > 0 && layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling) {
+            detachedWindow = toplevel;
+            detachedFromWorkspace = ws;
+            layout->removeWindow(toplevel);
+            rearrangeTiled();
+        }
     });
     connect(toplevel, &Toplevel::resizeRequested, this, [this, toplevel](uint32_t edges) {
         cursorMgrObj->beginInteractive(toplevel, CURSOR_RESIZE, edges);
+        rearrangeTiled();
     });
 }
 
 void Compositor::onPopupAdded(struct wlr_xdg_popup *xpopup)
 {
     popups.append(new Popup(this, xpopup));
+    rearrangeTiled();
 }
 
 void Compositor::onSetSelection(struct wlr_seat_request_set_selection_event *event)
@@ -152,10 +162,7 @@ void Compositor::onToplevelMapped(Toplevel *toplevel)
     focusToplevel(toplevel);
     int ws = outputs.isEmpty() ? 1 : outputs.first()->getWorkspace();
     layout->addWindow(toplevel, ws);
-    for (Output *out : outputs) {
-        if (out->getWorkspace() == ws)
-            layout->arrange(out->get(), ws);
-    }
+    rearrangeTiled();
     emit toplevelMapped(toplevel);
 }
 
@@ -164,15 +171,13 @@ void Compositor::onToplevelUnmapped(Toplevel *toplevel)
     if (toplevel == cursorMgrObj->getGrabbed()) {
         cursorMgrObj->resetMode();
     }
-    toplevels.removeOne(toplevel);
-    int ws = layout->getWindowWorkspace(toplevel);
-    layout->removeWindow(toplevel);
-    if (ws > 0) {
-        for (Output *out : outputs) {
-            if (out->getWorkspace() == ws)
-                layout->arrange(out->get(), ws);
-        }
+    if (toplevel == detachedWindow) {
+        detachedWindow = nullptr;
+        detachedFromWorkspace = -1;
     }
+    toplevels.removeOne(toplevel);
+    layout->removeWindow(toplevel);
+    rearrangeTiled();
     emit toplevelUnmapped(toplevel);
 }
 
@@ -231,6 +236,15 @@ void Compositor::setInitialLayoutMode(const QString &mode)
     else if (m == "monowindow")
         lm = LayoutManager::Mode::MonoWindow;
     layout->setWorkspaceLayoutMode(1, lm);
+}
+
+void Compositor::rearrangeTiled()
+{
+    for (Output *out : outputs) {
+        int ws = out->getWorkspace();
+        if (layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling)
+            layout->arrange(out->get(), ws);
+    }
 }
 
 // Input device helpers
@@ -360,6 +374,24 @@ Compositor::Compositor(const Astick &app)
 
     cursorMgrObj = new CursorManager(this);
     layout = new LayoutManager();
+
+    connect(cursorMgrObj, &CursorManager::interactiveEnded, this, [this](Toplevel *toplevel, CursorMode mode) {
+        if (mode == CURSOR_MOVE && toplevel == detachedWindow && detachedFromWorkspace > 0) {
+            if (!outputs.isEmpty()) {
+                Output *out = outputs.first();
+                int mid = out->get()->width / 2;
+                if (cursor->x < mid)
+                    layout->prependWindow(toplevel, detachedFromWorkspace);
+                else
+                    layout->addWindow(toplevel, detachedFromWorkspace);
+            } else {
+                layout->addWindow(toplevel, detachedFromWorkspace);
+            }
+            rearrangeTiled();
+            detachedWindow = nullptr;
+            detachedFromWorkspace = -1;
+        }
+    });
 
     socket = QString(wl_display_add_socket_auto(display));
     wlr_log(WLR_INFO, "Successfully initialized on socket %s", socket.toUtf8().data());

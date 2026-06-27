@@ -99,6 +99,9 @@ private:
     CursorManager *cursorMgrObj = nullptr;
     LayoutManager *layout = nullptr;
 
+    Toplevel *detachedWindow = nullptr;
+    int detachedFromWorkspace = -1;
+
     struct wl_listener newOutputListener;
     struct wl_listener newXdgToplevelNotifyListener;
     struct wl_listener newXdgPopupNotifyListener;
@@ -113,4 +116,5 @@ private:
 
     void addKeyboard(struct wlr_input_device *device);
     void addMouse(struct wlr_input_device *device);
+    void rearrangeTiled();
 };

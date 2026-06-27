@@ -60,6 +60,9 @@ public:
     CursorMode getMode() const { return cursorMode; }
     Toplevel *getGrabbed() const { return grabbedToplevel; }
 
+signals:
+    void interactiveEnded(Toplevel *toplevel, CursorMode mode);
+
 private:
     Compositor *compositor;
 

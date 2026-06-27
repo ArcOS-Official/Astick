@@ -208,8 +208,12 @@ void CursorManager::processResize()
 
 void CursorManager::resetMode()
 {
+    CursorMode endedMode = cursorMode;
+    Toplevel *endedToplevel = grabbedToplevel;
     cursorMode = CURSOR_PASSTHROUGH;
     grabbedToplevel = nullptr;
+    if (endedToplevel && endedMode != CURSOR_PASSTHROUGH)
+        emit interactiveEnded(endedToplevel, endedMode);
 }
 
 void CursorManager::beginInteractive(Toplevel *toplevel, CursorMode mode, uint32_t edges)
