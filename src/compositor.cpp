@@ -51,6 +51,12 @@ void handle_newXdgPopupNotify(wl_listener *listener, void *data)
     emit self->popupAdded((struct wlr_xdg_popup *)data);
 }
 
+void handle_newLayerNotify(wl_listener *listener, void *data)
+{
+    Compositor *self = getComp(self, newLayerNotify);
+    emit self->layerAdded((struct wlr_layer_surface_v1 *)data);
+}
+
 void handle_setSelection(wl_listener *listener, void *data)
 {
     Compositor *self = getComp(self, setSelection);
@@ -100,9 +106,12 @@ void Compositor::onOutputAdded(struct wlr_output *output)
 
 void Compositor::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
 {
-    Toplevel *toplevel = new Toplevel(this, xtoplevel, wlr_scene_xdg_surface_create(
+    struct wlr_scene_tree *tree = wlr_scene_xdg_surface_create(
         &scene->tree, xtoplevel->base
-    ));
+    );
+    wlr_scene_node_place_below(&tree->node,
+        &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
+    Toplevel *toplevel = new Toplevel(this, xtoplevel, tree);
     toplevels.append(toplevel);
 
     connect(toplevel, &Toplevel::mapped, this, [this, toplevel]() {
@@ -135,6 +144,21 @@ void Compositor::onPopupAdded(struct wlr_xdg_popup *xpopup)
         popups.removeOne(popup);
     });
     rearrangeTiled();
+}
+
+void Compositor::onLayerAdded(struct wlr_layer_surface_v1 *lsurface)
+{
+    if (lsurface->output == nullptr) {
+        if (outputs.isEmpty()) return;
+        lsurface->output = outputs.first()->get();
+    }
+    wlr_log(WLR_INFO, "New layer surface (layer %d, %dx%d)",
+        lsurface->current.layer, lsurface->current.desired_width, lsurface->current.desired_height);
+    LayerSurface *layer = new LayerSurface(this, lsurface);
+    layers.append(layer);
+    connect(layer, &LayerSurface::destroyed, this, [this, layer]() {
+        layers.removeOne(layer);
+    });
 }
 
 void Compositor::onSetSelection(struct wlr_seat_request_set_selection_event *event)
@@ -338,6 +362,7 @@ Compositor::Compositor(const Astick &app)
     connect(this, &Compositor::outputAdded, this, &Compositor::onOutputAdded);
     connect(this, &Compositor::toplevelAdded, this, &Compositor::onToplevelAdded);
     connect(this, &Compositor::popupAdded, this, &Compositor::onPopupAdded);
+    connect(this, &Compositor::layerAdded, this, &Compositor::onLayerAdded);
     connect(this, &Compositor::setSelection, this, &Compositor::onSetSelection);
     connect(this, &Compositor::inputAdded, this, &Compositor::onInputAdded);
 
@@ -368,7 +393,13 @@ Compositor::Compositor(const Astick &app)
     scene = wlr_scene_create();
     sceneLayout = wlr_scene_attach_output_layout(scene, outputLayout);
 
+    for (int i = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+            i <= ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; i++) {
+        layerTrees[i] = wlr_scene_tree_create(&scene->tree);
+    }
+
     xdgShell = wlr_xdg_shell_create(display, 3);
+    layerShell = wlr_layer_shell_v1_create(display, 5);
     cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(cursor, outputLayout);
     cursorMgr = wlr_xcursor_manager_create(nullptr, 24);
@@ -404,6 +435,7 @@ Compositor::Compositor(const Astick &app)
     signal(newOutputListener, &backend->events.new_output, handle_newOutput);
     signal(newXdgToplevelNotifyListener, &xdgShell->events.new_toplevel, handle_newXdgToplevelNotify);
     signal(newXdgPopupNotifyListener, &xdgShell->events.new_popup, handle_newXdgPopupNotify);
+    signal(newLayerNotifyListener, &layerShell->events.new_surface, handle_newLayerNotify);
     signal(setSelectionListener, &seat->events.request_set_selection, handle_setSelection);
     signal(newInputListener, &backend->events.new_input, handle_newInput);
 }
@@ -416,6 +448,7 @@ Compositor::~Compositor()
         wl_list_remove(&newOutputListener.link);
         wl_list_remove(&newXdgToplevelNotifyListener.link);
         wl_list_remove(&newXdgPopupNotifyListener.link);
+        wl_list_remove(&newLayerNotifyListener.link);
         wl_list_remove(&setSelectionListener.link);
         wl_list_remove(&newInputListener.link);
 
@@ -425,6 +458,7 @@ Compositor::~Compositor()
         for (Output *out : outputs) delete out;
         for (Toplevel *t : toplevels) delete t;
         for (Popup *p : popups) delete p;
+        for (LayerSurface *l : layers) delete l;
         for (Keyboard *k : keyboards) delete k;
         for (Mouse *m : mice) delete m;
     }

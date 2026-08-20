@@ -56,6 +56,9 @@ extern "C" {
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#define namespace namespace_
+#include <wlr/types/wlr_layer_shell_v1.h>
+#undef namespace
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>

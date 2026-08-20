@@ -28,6 +28,7 @@
 #include "input/mouse.h"
 #include "toplevel.h"
 #include "popup.h"
+#include "layersurface.h"
 #include "cursor.h"
 #include "layout.h"
 #include "application.h"
@@ -42,6 +43,7 @@ public:
 
     struct wlr_scene *getScene() { return scene; }
     struct wlr_output_layout *getOutputLayout() { return outputLayout; }
+    struct wlr_scene_tree *getLayerTree(uint32_t layer) { return layerTrees[layer]; }
     struct wl_display *getDisplay() { return display; }
     struct wlr_seat *getSeat() { return seat; }
     struct wlr_cursor *getCursor() { return cursor; }
@@ -63,6 +65,7 @@ signals:
     void toplevelMapped(Toplevel *toplevel);
     void toplevelUnmapped(Toplevel *toplevel);
     void popupAdded(struct wlr_xdg_popup *popup);
+    void layerAdded(struct wlr_layer_surface_v1 *surface);
     void setSelection(struct wlr_seat_request_set_selection_event *event);
     void inputAdded(struct wlr_input_device *device);
 
@@ -70,6 +73,7 @@ private slots:
     void onOutputAdded(struct wlr_output *output);
     void onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel);
     void onPopupAdded(struct wlr_xdg_popup *xpopup);
+    void onLayerAdded(struct wlr_layer_surface_v1 *lsurface);
     void onSetSelection(struct wlr_seat_request_set_selection_event *event);
     void onInputAdded(struct wlr_input_device *device);
     void onToplevelMapped(Toplevel *toplevel);
@@ -86,6 +90,8 @@ private:
     struct wlr_scene_output_layout *sceneLayout = nullptr;
     struct wlr_output_layout *outputLayout = nullptr;
     struct wlr_xdg_shell *xdgShell = nullptr;
+    struct wlr_layer_shell_v1 *layerShell = nullptr;
+    struct wlr_scene_tree *layerTrees[4] = {};
     struct wlr_cursor *cursor = nullptr;
     struct wlr_xcursor_manager *cursorMgr = nullptr;
     struct wlr_seat *seat = nullptr;
@@ -95,6 +101,7 @@ private:
     QList<Mouse *> mice;
     QList<Toplevel *> toplevels;
     QList<Popup *> popups;
+    QList<LayerSurface *> layers;
 
     CursorManager *cursorMgrObj = nullptr;
     LayoutManager *layout = nullptr;
@@ -105,12 +112,14 @@ private:
     struct wl_listener newOutputListener;
     struct wl_listener newXdgToplevelNotifyListener;
     struct wl_listener newXdgPopupNotifyListener;
+    struct wl_listener newLayerNotifyListener;
     struct wl_listener setSelectionListener;
     struct wl_listener newInputListener;
 
     friend void handle_newOutput(wl_listener *listener, void *data);
     friend void handle_newXdgToplevelNotify(wl_listener *listener, void *data);
     friend void handle_newXdgPopupNotify(wl_listener *listener, void *data);
+    friend void handle_newLayerNotify(wl_listener *listener, void *data);
     friend void handle_setSelection(wl_listener *listener, void *data);
     friend void handle_newInput(wl_listener *listener, void *data);
 

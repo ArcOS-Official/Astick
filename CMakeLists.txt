@@ -23,6 +23,7 @@ set(SOURCES
     src/compositor.cpp
     src/toplevel.cpp
     src/popup.cpp
+    src/layersurface.cpp
     src/cursor.cpp
     src/layout.cpp
     src/output.cpp
