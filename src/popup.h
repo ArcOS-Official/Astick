@@ -33,6 +33,8 @@ public:
         Compositor *server,
         struct wlr_xdg_popup *popup_
     );
+    struct wlr_xdg_popup *get() const { return popup; }
+
     friend void handle_popup_commit(wl_listener *listener, void *data);
     friend void handle_popup_destroy(wl_listener *listener, void *data);
 

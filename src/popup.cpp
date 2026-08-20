@@ -30,9 +30,11 @@ Popup::Popup(
     popup = popup_;
 
     struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
-    struct wlr_scene_tree *parent_tree = (struct wlr_scene_tree *)parent->data;
-    popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+    if (parent != nullptr && parent->data != nullptr) {
+        struct wlr_scene_tree *parent_tree = (struct wlr_scene_tree *)parent->data;
+        popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+    }
 
     signal(commit, &popup->base->surface->events.commit, handle_popup_commit);
-    signal(destroy, &popup->base->surface->events.destroy, handle_popup_destroy);
+    signal(destroy, &popup->events.destroy, handle_popup_destroy);
 }

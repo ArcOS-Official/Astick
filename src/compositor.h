@@ -55,7 +55,7 @@ public:
 
 public slots:
     void run();
-    void closePopup();
+    void closePopup(Popup *popup);
 
 signals:
     void outputAdded(struct wlr_output *output);

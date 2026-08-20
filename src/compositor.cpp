@@ -129,7 +129,11 @@ void Compositor::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
 
 void Compositor::onPopupAdded(struct wlr_xdg_popup *xpopup)
 {
-    popups.append(new Popup(this, xpopup));
+    Popup *popup = new Popup(this, xpopup);
+    popups.append(popup);
+    connect(popup, &Popup::destroyed, this, [this, popup]() {
+        popups.removeOne(popup);
+    });
     rearrangeTiled();
 }
 
@@ -451,12 +455,9 @@ void Compositor::run()
     wl_display_run(display);
 }
 
-void Compositor::closePopup()
+void Compositor::closePopup(Popup *popup)
 {
-    if (!popups.isEmpty()) {
-        Popup *popup = popups.takeLast();
-        wlr_log(WLR_INFO, "Closing popup");
-        emit popup->destroyed();
-        delete popup;
-    }
+    if (popup == nullptr) return;
+    wlr_log(WLR_INFO, "Closing popup");
+    wlr_xdg_popup_destroy(popup->get());
 }
