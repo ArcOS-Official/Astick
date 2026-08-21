@@ -87,6 +87,10 @@ LayerSurface::LayerSurface(
 
     struct wlr_scene_tree *parent = server->getLayerTree(layer->current.layer);
     sceneLayer = wlr_scene_layer_surface_v1_create(parent, surface);
+    // Expose the scene tree via layer->data so popups parented to this
+    // layer surface can find their scene parent (mirrors Toplevel's
+    // toplevel->base->data = sceneTree).
+    layer->data = sceneLayer->tree;
 
     signal(map, &layer->surface->events.map, handle_layer_map);
     signal(unmap, &layer->surface->events.unmap, handle_layer_unmap);

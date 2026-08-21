@@ -20,6 +20,7 @@
 #include <QObject>
 #include "debug.h"
 #include <cstdlib>
+#include <cmath>
 #include <wayland-server-core.h>
 #include "util.h"
 #include "wlroots.h"
@@ -80,8 +81,17 @@ void Compositor::onOutputAdded(struct wlr_output *output)
     wlr_output_state_set_enabled(&state, true);
 
     struct wlr_output_mode *mode = wlr_output_preferred_mode(output);
-    if (mode != nullptr)
+    if (mode != nullptr) {
         wlr_output_state_set_mode(&state, mode);
+    } else {
+        wlr_output_state_set_custom_mode(&state, output->width, output->height, 60000);
+        if (!wlr_output_commit_state(output, &state)) {
+            wlr_log(WLR_INFO, "custom mode rejected, enabling output without a mode");
+            wlr_output_state_finish(&state);
+            wlr_output_state_init(&state);
+            wlr_output_state_set_enabled(&state, true);
+        }
+    }
 
     wlr_output_commit_state(output, &state);
     wlr_output_state_finish(&state);
@@ -92,7 +102,7 @@ void Compositor::onOutputAdded(struct wlr_output *output)
     connect(out, &Output::workspaceChanged, this, [this, out](int oldWs, int newWs) {
         layout->deactivateWorkspace(oldWs);
         layout->activateWorkspace(newWs);
-        layout->arrange(out->get(), newWs);
+        arrangeForOutput(out);
     });
 
     layout->activateWorkspace(out->getWorkspace());
@@ -156,8 +166,21 @@ void Compositor::onLayerAdded(struct wlr_layer_surface_v1 *lsurface)
         lsurface->current.layer, lsurface->current.desired_width, lsurface->current.desired_height);
     LayerSurface *layer = new LayerSurface(this, lsurface);
     layers.append(layer);
+    auto reflowForLayer = [this, layer]() {
+        struct wlr_output *wout = layer->get()->output;
+        for (Output *out : outputs) {
+            if (out->get() == wout) {
+                arrangeForOutput(out);
+                break;
+            }
+        }
+    };
+    connect(layer, &LayerSurface::mapped, this, reflowForLayer);
+    connect(layer, &LayerSurface::unmapped, this, reflowForLayer);
+    connect(layer, &LayerSurface::committed, this, reflowForLayer);
     connect(layer, &LayerSurface::destroyed, this, [this, layer]() {
         layers.removeOne(layer);
+        for (Output *out : outputs) arrangeForOutput(out);
     });
 }
 
@@ -239,7 +262,7 @@ void Compositor::focusToplevel(Toplevel *toplevel)
         for (Output *out : outputs) {
             if (out->getWorkspace() == ws &&
                 layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::MonoWindow)
-                layout->arrange(out->get(), ws);
+                arrangeForOutput(out);
         }
     }
 
@@ -266,12 +289,104 @@ void Compositor::setInitialLayoutMode(const QString &mode)
     layout->setWorkspaceLayoutMode(1, lm);
 }
 
+struct wlr_box Compositor::usableAreaForOutput(struct wlr_output *wlr_output)
+{
+    struct wlr_box full = {0, 0, 0, 0};
+    if (outputLayout && wlr_output) {
+        wlr_output_layout_get_box(outputLayout, wlr_output, &full);
+        if (full.width == 0 && full.height == 0) {
+            full = {0, 0, wlr_output->width, wlr_output->height};
+        }
+    } else if (wlr_output) {
+        full = {0, 0, wlr_output->width, wlr_output->height};
+    }
+    struct wlr_box usable = full;
+    for (LayerSurface *ls : layers) {
+        struct wlr_layer_surface_v1 *l = ls->get();
+        if (l->output != wlr_output) continue;
+        if (!l->surface->mapped) continue;
+        struct wlr_layer_surface_v1_state *state = &l->current;
+        if (state->exclusive_zone <= 0) continue;
+
+        // Prefer exclusive_edge if set, otherwise infer from anchor
+        uint32_t anchor = state->anchor;
+        if (state->exclusive_edge != 0) {
+            anchor = state->exclusive_edge;
+        }
+
+        // Apply the same logic as wlr_scene_layer_surface_v1 exclusive handling
+        // plus margin. The scene helper handles 4 specific anchor combos; handle
+        // both those and a generic per-edge fallback.
+        bool handled = false;
+        switch (anchor) {
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+            usable.y += state->exclusive_zone + state->margin.top;
+            usable.height -= state->exclusive_zone + state->margin.top;
+            handled = true;
+            break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+            usable.height -= state->exclusive_zone + state->margin.bottom;
+            handled = true;
+            break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT):
+            usable.x += state->exclusive_zone + state->margin.left;
+            usable.width -= state->exclusive_zone + state->margin.left;
+            handled = true;
+            break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+              ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+            usable.width -= state->exclusive_zone + state->margin.right;
+            handled = true;
+            break;
+        default:
+            break;
+        }
+        if (!handled) {
+            // Generic fallback: treat each anchored edge with an exclusive
+            // zone. This covers custom exclusive_edge values or unusual anchors.
+            if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) {
+                usable.y += state->exclusive_zone + state->margin.top;
+                usable.height -= state->exclusive_zone + state->margin.top;
+            } else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) {
+                usable.height -= state->exclusive_zone + state->margin.bottom;
+            }
+            if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) {
+                usable.x += state->exclusive_zone + state->margin.left;
+                usable.width -= state->exclusive_zone + state->margin.left;
+            } else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) {
+                usable.width -= state->exclusive_zone + state->margin.right;
+            }
+        }
+        if (usable.width < 0) usable.width = 0;
+        if (usable.height < 0) usable.height = 0;
+    }
+    return usable;
+}
+
+void Compositor::arrangeForOutput(Output *out)
+{
+    if (!out) return;
+    struct wlr_box usable = usableAreaForOutput(out->get());
+    layout->arrange(usable, out->getWorkspace());
+}
+
 void Compositor::rearrangeTiled()
 {
     for (Output *out : outputs) {
         int ws = out->getWorkspace();
         if (layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling)
-            layout->arrange(out->get(), ws);
+            arrangeForOutput(out);
     }
 }
 
@@ -310,7 +425,7 @@ void Compositor::addKeyboard(struct wlr_input_device *device)
                     auto mode = layout->getWorkspaceLayoutMode(ws);
                     int next = ((int)mode + 1) % 3;
                     layout->setWorkspaceLayoutMode(ws, (LayoutManager::Mode)next);
-                    layout->arrange(out->get(), ws);
+                    arrangeForOutput(out);
                     handled = true;
                     break;
                 }
@@ -388,6 +503,7 @@ Compositor::Compositor(const Astick &app)
     wlr_compositor_create(display, 5, renderer);
     wlr_subcompositor_create(display);
     wlr_data_device_manager_create(display);
+    wlr_presentation_create(display, backend, 1);
 
     outputLayout = wlr_output_layout_create(display);
     scene = wlr_scene_create();
@@ -412,13 +528,40 @@ Compositor::Compositor(const Astick &app)
 
     connect(cursorMgrObj, &CursorManager::interactiveEnded, this, [this](Toplevel *toplevel, CursorMode mode) {
         if (mode == CURSOR_MOVE && toplevel == detachedWindow && detachedFromWorkspace > 0) {
-            if (!outputs.isEmpty()) {
-                Output *out = outputs.first();
-                int mid = out->get()->width / 2;
-                if (cursor->x < mid)
-                    layout->prependWindow(toplevel, detachedFromWorkspace);
-                else
-                    layout->addWindow(toplevel, detachedFromWorkspace);
+            Output *out = outputForToplevel(toplevel);
+            if (!out && !outputs.isEmpty()) out = outputs.first();
+            if (out) {
+                struct wlr_box usable = usableAreaForOutput(out->get());
+                struct wlr_scene_tree *tree = toplevel->getSceneTree();
+                struct wlr_box *geo = &toplevel->get()->base->geometry;
+                double winW = geo->width > 0 ? geo->width : 800;
+                double winH = geo->height > 0 ? geo->height : 600;
+                double cx = tree->node.x + geo->x + winW / 2.0;
+                double cy = tree->node.y + geo->y + winH / 2.0;
+                int remaining = layout->windowCount(detachedFromWorkspace);
+                int total = remaining + 1;
+                int cols = std::ceil(std::sqrt((double)total));
+                int rows = std::ceil((double)total / cols);
+                int cell_w = cols > 0 ? usable.width / cols : usable.width;
+                int cell_h = rows > 0 ? usable.height / rows : usable.height;
+                if (cell_w <= 0) cell_w = usable.width;
+                if (cell_h <= 0) cell_h = usable.height;
+                int best = 0;
+                double bestDist = 1e18;
+                for (int i = 0; i < total; ++i) {
+                    int col = i % cols;
+                    int row = i / cols;
+                    double tileCx = usable.x + col * cell_w + cell_w / 2.0;
+                    double tileCy = usable.y + row * cell_h + cell_h / 2.0;
+                    double dx = cx - tileCx;
+                    double dy = cy - tileCy;
+                    double dist = dx * dx + dy * dy;
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        best = i;
+                    }
+                }
+                layout->insertWindowAt(toplevel, detachedFromWorkspace, best);
             } else {
                 layout->addWindow(toplevel, detachedFromWorkspace);
             }

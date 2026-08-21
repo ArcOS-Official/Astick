@@ -40,6 +40,7 @@ public:
     friend void onFrame(struct wl_listener *listener, void *data);
     friend void onRequestState(struct wl_listener *listener, void *data);
     friend void onDestroy(struct wl_listener *listener, void *data);
+    friend int frameTimerTick(void *data);
 
 signals:
     void frameReady();
@@ -50,6 +51,13 @@ private:
     struct wlr_output *output;
     int workspace = 1;
     std::timespec lastFrame;
+    std::timespec lastHostFrame;
+    std::timespec fpsTimer;
+    int fpsFrames = 0;
+    int fpsRendered = 0;
+    struct wl_event_source *frameTimer = nullptr;
+    int frameInterval = 16;
+    void renderFrame();
     struct wlr_scene *scene;
     struct wl_listener frameListener;
     struct wl_listener requestStateListener;

@@ -27,11 +27,14 @@ public:
 
     void addWindow(Toplevel *toplevel, int workspace);
     void prependWindow(Toplevel *toplevel, int workspace);
+    void insertWindowAt(Toplevel *toplevel, int workspace, int index);
     void removeWindow(Toplevel *toplevel);
     int getWindowWorkspace(Toplevel *toplevel) const;
     void raiseWindow(Toplevel *toplevel);
+    int windowCount(int workspace) const;
 
     void arrange(struct wlr_output *output, int workspace);
+    void arrange(struct wlr_box usable, int workspace);
 
     void activateWorkspace(int workspace);
     void deactivateWorkspace(int workspace);
@@ -56,8 +59,8 @@ private:
 
     Workspace *findWorkspace(int id);
     Workspace *findWorkspaceByWindow(Toplevel *toplevel);
-    void arrangeTiling(Workspace *ws, struct wlr_output *output);
-    void arrangeFloating(Workspace *ws, struct wlr_output *output);
-    void arrangeMonoWindow(Workspace *ws, struct wlr_output *output);
+    void arrangeTiling(Workspace *ws, struct wlr_box usable);
+    void arrangeFloating(Workspace *ws, struct wlr_box usable);
+    void arrangeMonoWindow(Workspace *ws, struct wlr_box usable);
     void applyWindowGeometry(WindowState *state);
 };

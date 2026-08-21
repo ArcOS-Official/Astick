@@ -7,6 +7,16 @@ void handle_popup_commit(wl_listener *listener, void *)
 {
     Popup *self = wl_container_of(listener, self, commit);
     if (self->popup->base->initial_commit) {
+        if (!self->server->getOutputs().isEmpty()) {
+            struct wlr_output *wout = self->server->getOutputs().first()->get();
+            struct wlr_box box;
+            wlr_output_layout_get_box(
+                self->server->getOutputLayout(), wout, &box);
+            if (box.width == 0 && box.height == 0) {
+                box = {0, 0, wout->width, wout->height};
+            }
+            wlr_xdg_popup_unconstrain_from_box(self->popup, &box);
+        }
         wlr_xdg_surface_schedule_configure(self->popup->base);
     }
     emit self->committed();
@@ -29,10 +39,51 @@ Popup::Popup(
     server = server_;
     popup = popup_;
 
-    struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
-    if (parent != nullptr && parent->data != nullptr) {
-        struct wlr_scene_tree *parent_tree = (struct wlr_scene_tree *)parent->data;
-        popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+    struct wlr_layer_surface_v1 *layer_parent =
+        wlr_layer_surface_v1_try_from_wlr_surface(popup->parent);
+    if (layer_parent != nullptr) {
+        // quickshell popups (and any layer-surface popups) must appear on the
+        // top layer above all layershell/background/window layers. Force them
+        // into OVERLAY so they are not occluded by TOP/BOTTOM panels while
+        // preserving their position relative to the parent layer surface.
+        struct wlr_scene_tree *overlay =
+            server->getLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+        struct wlr_scene_tree *layer_tree = nullptr;
+        if (layer_parent->data)
+            layer_tree = (struct wlr_scene_tree *)layer_parent->data;
+        struct wlr_scene_tree *target = overlay ? overlay : layer_tree;
+        if (!target) target = &server->getScene()->tree;
+        popup->base->data = wlr_scene_xdg_surface_create(target, popup->base);
+        // If we forced the popup into OVERLAY, its position is currently
+        // relative to the parent surface (0,0 in overlay). Make it absolute
+        // by adding the parent layer's absolute position so it appears
+        // anchored to the parent layer (e.g. TopBar at 0,0, right panel at
+        // 1240,0). For xdg parents this is not needed as they are in the
+        // same tree.
+        if (target == overlay && layer_tree && popup->base->data) {
+            struct wlr_scene_tree *popup_tree =
+                (struct wlr_scene_tree *)popup->base->data;
+            wlr_scene_node_set_position(&popup_tree->node,
+                popup_tree->node.x + layer_tree->node.x,
+                popup_tree->node.y + layer_tree->node.y);
+        }
+    } else {
+        struct wlr_scene_tree *parent_tree = nullptr;
+        struct wlr_xdg_surface *xdg_parent =
+            wlr_xdg_surface_try_from_wlr_surface(popup->parent);
+        if (xdg_parent != nullptr && xdg_parent->data != nullptr) {
+            parent_tree = (struct wlr_scene_tree *)xdg_parent->data;
+        }
+        if (parent_tree != nullptr) {
+            popup->base->data =
+                wlr_scene_xdg_surface_create(parent_tree, popup->base);
+        } else {
+            struct wlr_scene_tree *fallback =
+                server->getLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+            if (!fallback) fallback = &server->getScene()->tree;
+            popup->base->data =
+                wlr_scene_xdg_surface_create(fallback, popup->base);
+        }
     }
 
     signal(commit, &popup->base->surface->events.commit, handle_popup_commit);

@@ -54,6 +54,7 @@ public:
     void focusToplevel(Toplevel *toplevel);
     Output *outputForToplevel(Toplevel *toplevel);
     void setInitialLayoutMode(const QString &mode);
+    struct wlr_box usableAreaForOutput(struct wlr_output *output);
 
 public slots:
     void run();
@@ -126,4 +127,5 @@ private:
     void addKeyboard(struct wlr_input_device *device);
     void addMouse(struct wlr_input_device *device);
     void rearrangeTiled();
+    void arrangeForOutput(Output *out);
 };

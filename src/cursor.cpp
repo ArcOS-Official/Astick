@@ -166,8 +166,25 @@ void CursorManager::processMove()
 {
     Toplevel *toplevel = grabbedToplevel;
     struct wlr_cursor *cursor = compositor->getCursor();
-    wlr_scene_node_set_position(&toplevel->getSceneTree()->node,
-        cursor->x - grabX, cursor->y - grabY);
+    double nx = cursor->x - grabX;
+    double ny = cursor->y - grabY;
+
+    if (auto *out = compositor->outputForToplevel(toplevel)) {
+        struct wlr_box usable = compositor->usableAreaForOutput(out->get());
+        struct wlr_box *geo = &toplevel->get()->base->geometry;
+        double winW = geo->width > 0 ? geo->width : 800;
+        double winH = geo->height > 0 ? geo->height : 600;
+        double minX = usable.x - geo->x;
+        double minY = usable.y - geo->y;
+        double maxX = usable.x + usable.width - geo->x - winW;
+        double maxY = usable.y + usable.height - geo->y - winH;
+        if (nx < minX) nx = minX;
+        if (ny < minY) ny = minY;
+        if (nx > maxX) nx = maxX;
+        if (ny > maxY) ny = maxY;
+    }
+
+    wlr_scene_node_set_position(&toplevel->getSceneTree()->node, nx, ny);
 }
 
 void CursorManager::processResize()
@@ -195,6 +212,16 @@ void CursorManager::processResize()
     } else if (resizeEdges & WLR_EDGE_RIGHT) {
         new_right = border_x;
         if (new_right <= new_left) new_right = new_left + 1;
+    }
+
+    if (auto *out = compositor->outputForToplevel(toplevel)) {
+        struct wlr_box usable = compositor->usableAreaForOutput(out->get());
+        if (new_left < usable.x) new_left = usable.x;
+        if (new_top < usable.y) new_top = usable.y;
+        if (new_right > usable.x + usable.width) new_right = usable.x + usable.width;
+        if (new_bottom > usable.y + usable.height) new_bottom = usable.y + usable.height;
+        if (new_left >= new_right) new_left = new_right - 1;
+        if (new_top >= new_bottom) new_top = new_bottom - 1;
     }
 
     struct wlr_box *geo_box = &toplevel->get()->base->geometry;

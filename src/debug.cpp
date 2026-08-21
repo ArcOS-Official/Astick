@@ -55,6 +55,7 @@ void handler(enum wlr_log_importance importance, const char *fmt, va_list args)
     else
         prefix = "INFO";
     std::println("{}: {}", prefix, log.toStdString());
+    std::fflush(stdout);
     switch (importance) {
         case WLR_ERROR:
             debugger.errors.append(log);

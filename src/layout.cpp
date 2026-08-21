@@ -46,6 +46,23 @@ void LayoutManager::prependWindow(Toplevel *toplevel, int workspace)
     ws->windows.prepend({ toplevel, false, 0, 0, 0, 0 });
 }
 
+void LayoutManager::insertWindowAt(Toplevel *toplevel, int workspace, int index)
+{
+    Workspace *ws = findWorkspace(workspace);
+    if (!ws) return;
+    if (index < 0) index = 0;
+    if (index > ws->windows.size()) index = ws->windows.size();
+    ws->windows.insert(index, { toplevel, false, 0, 0, 0, 0 });
+}
+
+int LayoutManager::windowCount(int workspace) const
+{
+    for (const auto &ws : workspaces) {
+        if (ws.id == workspace) return ws.windows.size();
+    }
+    return 0;
+}
+
 void LayoutManager::removeWindow(Toplevel *toplevel)
 {
     for (auto &ws : workspaces) {
@@ -84,18 +101,24 @@ int LayoutManager::getWindowWorkspace(Toplevel *toplevel) const
 void LayoutManager::arrange(struct wlr_output *output, int workspace)
 {
     if (output == nullptr) return;
+    struct wlr_box usable = {0, 0, output->width, output->height};
+    arrange(usable, workspace);
+}
+
+void LayoutManager::arrange(struct wlr_box usable, int workspace)
+{
     Workspace *ws = findWorkspace(workspace);
     if (!ws || ws->windows.isEmpty()) return;
 
     switch (ws->mode) {
     case Mode::Tiling:
-        arrangeTiling(ws, output);
+        arrangeTiling(ws, usable);
         break;
     case Mode::Floating:
-        arrangeFloating(ws, output);
+        arrangeFloating(ws, usable);
         break;
     case Mode::MonoWindow:
-        arrangeMonoWindow(ws, output);
+        arrangeMonoWindow(ws, usable);
         break;
     }
 }
@@ -144,10 +167,11 @@ LayoutManager::Workspace *LayoutManager::findWorkspaceByWindow(Toplevel *topleve
     return nullptr;
 }
 
-void LayoutManager::arrangeTiling(Workspace *ws, struct wlr_output *output)
+void LayoutManager::arrangeTiling(Workspace *ws, struct wlr_box usable)
 {
-    int width = output->width;
-    int height = output->height;
+    int width = usable.width;
+    int height = usable.height;
+    if (width <= 0 || height <= 0) return;
     int count = ws->windows.size();
     int cols = std::ceil(std::sqrt(count));
     int rows = std::ceil((double)count / cols);
@@ -158,8 +182,8 @@ void LayoutManager::arrangeTiling(Workspace *ws, struct wlr_output *output)
         auto &w = ws->windows[i];
         int col = i % cols;
         int row = i / cols;
-        w.x = col * cell_w;
-        w.y = row * cell_h;
+        w.x = usable.x + col * cell_w;
+        w.y = usable.y + row * cell_h;
         w.width = cell_w;
         w.height = cell_h;
         w.positioned = true;
@@ -168,30 +192,55 @@ void LayoutManager::arrangeTiling(Workspace *ws, struct wlr_output *output)
     }
 }
 
-void LayoutManager::arrangeFloating(Workspace *ws, struct wlr_output *output)
+void LayoutManager::arrangeFloating(Workspace *ws, struct wlr_box usable)
 {
     for (auto &w : ws->windows) {
+        bool needsApply = false;
         if (!w.positioned) {
-            w.x = (output->width - 800) / 2;
-            w.y = (output->height - 600) / 2;
-            w.width = 800;
-            w.height = 600;
+            w.width = std::min(800, usable.width);
+            w.height = std::min(600, usable.height);
+            w.x = usable.x + (usable.width - w.width) / 2;
+            w.y = usable.y + (usable.height - w.height) / 2;
             w.positioned = true;
-            applyWindowGeometry(&w);
+            needsApply = true;
+        } else {
+            // Keep floating windows inside the usable area when shell panels change
+            if (w.width > usable.width) {
+                w.width = usable.width;
+                needsApply = true;
+            }
+            if (w.height > usable.height) {
+                w.height = usable.height;
+                needsApply = true;
+            }
+            int nx = w.x;
+            int ny = w.y;
+            if (nx < usable.x) nx = usable.x;
+            if (ny < usable.y) ny = usable.y;
+            if (nx + w.width > usable.x + usable.width)
+                nx = usable.x + usable.width - w.width;
+            if (ny + w.height > usable.y + usable.height)
+                ny = usable.y + usable.height - w.height;
+            if (nx != w.x || ny != w.y) {
+                w.x = nx;
+                w.y = ny;
+                needsApply = true;
+            }
         }
+        if (needsApply) applyWindowGeometry(&w);
         wlr_scene_node_set_enabled(&w.toplevel->getSceneTree()->node, true);
     }
 }
 
-void LayoutManager::arrangeMonoWindow(Workspace *ws, struct wlr_output *output)
+void LayoutManager::arrangeMonoWindow(Workspace *ws, struct wlr_box usable)
 {
     bool first = true;
     for (auto &w : ws->windows) {
         if (first) {
-            w.x = 0;
-            w.y = 0;
-            w.width = output->width;
-            w.height = output->height;
+            w.x = usable.x;
+            w.y = usable.y;
+            w.width = usable.width;
+            w.height = usable.height;
             w.positioned = true;
             applyWindowGeometry(&w);
             wlr_scene_node_set_enabled(&w.toplevel->getSceneTree()->node, true);
