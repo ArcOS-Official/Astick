@@ -13,7 +13,7 @@
             "left_handed": false,
             "middle_emulation": false,
             "natural_scroll": false,
-            "scroll_factor": 4.0,
+            "scroll_factor": 1.0,
             "speed": 0.0,
             "tap_button_map": "lrm",
             "tap_enabled": true
