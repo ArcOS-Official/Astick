@@ -21,12 +21,14 @@
 #include <qobject.h>
 #include "../wlroots.h"
 
+struct MouseConfig;
 class Mouse : public QObject {
     Q_OBJECT
 
 public:
     Mouse(struct wlr_input_device *device);
     ~Mouse();
+    void applyConfig(const MouseConfig &cfg);
 
 signals:
     void destroyed();

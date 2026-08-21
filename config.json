@@ -1,0 +1,127 @@
+{
+    "input": {
+        "keyboard": {
+            "layouts": "us,ara",
+            "options": "compose:ralt,grp:alt_shift_toggle",
+            "repeat_delay": 600,
+            "repeat_rate": 25,
+            "variant": ""
+        },
+        "mouse": {
+            "accel_profile": "adaptive",
+            "dpi": 0.0,
+            "left_handed": false,
+            "middle_emulation": false,
+            "natural_scroll": false,
+            "scroll_factor": 4.0,
+            "speed": 0.0,
+            "tap_button_map": "lrm",
+            "tap_enabled": true
+        }
+    },
+    "keybinds": [
+        {
+            "action": "quit",
+            "key": "Escape",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "focus_prev",
+            "key": "F1",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "toggle_layout",
+            "key": "F2",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "new_workspace",
+            "key": "F3",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "goto_workspace",
+            "arg": "1",
+            "key": "F4",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "goto_workspace",
+            "arg": "1",
+            "key": "1",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "goto_workspace",
+            "arg": "2",
+            "key": "2",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "close_window",
+            "key": "q",
+            "mods": [
+                "Alt",
+                "Shift"
+            ]
+        }
+    ],
+    "outputs": {
+        "default": {
+            "height": 720,
+            "refresh": 60.0,
+            "scale": 1.0,
+            "width": 1280
+        },
+        "monitors": {
+            "DP-1_Dell_Inc._DELL_U2720Q_123456": {
+                "dpi": 163.0,
+                "enabled": true,
+                "height": 2160,
+                "refresh": 60.0,
+                "scale": 1.5,
+                "width": 3840,
+                "x": 0,
+                "y": 0
+            },
+            "HDMI-A-1_LG_Electronics_LG_ULTRAGEAR_987654": {
+                "enabled": true,
+                "height": 1080,
+                "refresh": 144.0,
+                "scale": 1.0,
+                "width": 1920,
+                "x": 3840,
+                "y": 0
+            },
+            "WL-1": {
+                "enabled": true,
+                "height": 720,
+                "refresh": 60.0,
+                "scale": 1.0,
+                "width": 1280
+            },
+            "eDP-1_AU_Optronics_0x1234_0": {
+                "enabled": true,
+                "height": 1080,
+                "refresh": 60.0,
+                "scale": 1.25,
+                "width": 1920
+            }
+        }
+    }
+}

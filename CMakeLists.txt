@@ -16,6 +16,12 @@ pkg_check_modules(Wlroots REQUIRED IMPORTED_TARGET wlroots-0.19)
 pkg_check_modules(WaylandServer REQUIRED IMPORTED_TARGET wayland-server)
 pkg_check_modules(WaylandClient REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(Xkbcommon REQUIRED IMPORTED_TARGET xkbcommon)
+pkg_check_modules(Libinput REQUIRED IMPORTED_TARGET libinput)
+find_package(nlohmann_json 3.2.0 QUIET)
+if(NOT nlohmann_json_FOUND)
+    # header-only fallback, still need include path
+    message(STATUS "nlohmann_json not found via CMake, using header-only")
+endif()
 add_compile_options(-Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla)
 
 set(SOURCES
@@ -30,6 +36,7 @@ set(SOURCES
     src/debug.cpp
     src/application.cpp
     src/util.cpp
+    src/config.cpp
     src/input/keyboard.cpp
     src/input/mouse.cpp
 )
@@ -42,4 +49,10 @@ target_link_libraries(Astick PRIVATE PkgConfig::Wlroots)
 target_link_libraries(Astick PRIVATE PkgConfig::WaylandServer)
 target_link_libraries(Astick PRIVATE PkgConfig::WaylandClient)
 target_link_libraries(Astick PRIVATE PkgConfig::Xkbcommon)
+if(TARGET PkgConfig::Libinput)
+    target_link_libraries(Astick PRIVATE PkgConfig::Libinput)
+endif()
+if(TARGET nlohmann_json::nlohmann_json)
+    target_link_libraries(Astick PRIVATE nlohmann_json::nlohmann_json)
+endif()
 target_include_directories(Astick PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/protocols")

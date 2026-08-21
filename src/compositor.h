@@ -32,13 +32,14 @@
 #include "cursor.h"
 #include "layout.h"
 #include "application.h"
+#include "config.h"
 
 class Compositor : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit Compositor(const Astick &app);
+    explicit Compositor(const Astick &app, Config *cfg = nullptr);
     ~Compositor();
 
     struct wlr_scene *getScene() { return scene; }
@@ -56,6 +57,7 @@ public:
     Output *outputForToplevel(Toplevel *toplevel);
     void setInitialLayoutMode(const QString &mode);
     struct wlr_box usableAreaForOutput(struct wlr_output *output);
+    Config* getConfig() { return config; }
 
 public slots:
     void run();
@@ -108,6 +110,7 @@ private:
 
     CursorManager *cursorMgrObj = nullptr;
     LayoutManager *layout = nullptr;
+    Config *config = nullptr;
 
     Toplevel *detachedWindow = nullptr;
     int detachedFromWorkspace = -1;

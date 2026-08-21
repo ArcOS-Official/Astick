@@ -20,14 +20,32 @@
 #include "toplevel.h"
 #include "compositor.h"
 #include "util.h"
+#include <algorithm>
+#include <print>
 
 void cursor_handle_motion(wl_listener *listener, void *data)
 {
     CursorManager *self = wl_container_of(listener, self, motionListener);
     struct wlr_pointer_motion_event *event = (struct wlr_pointer_motion_event *)data;
     Compositor *comp = self->compositor;
-    wlr_cursor_move(comp->getCursor(), &event->pointer->base,
-        event->delta_x, event->delta_y);
+    double dx = event->delta_x;
+    double dy = event->delta_y;
+    // Apply mouse speed multiplier for wayland pointers (libinput devices already have speed via libinput)
+    if (comp->getConfig()) {
+        // Check if this pointer is libinput or wayland
+        struct wlr_input_device *dev = &event->pointer->base;
+        if (!wlr_input_device_is_libinput(dev)) {
+            double speed = comp->getConfig()->mouse.speed;
+            // libinput speed is -1..1, map to multiplier 0.1x..3.0x for wayland pointer
+            // Use formula: multiplier = 1.0 + speed * 2.0  (speed 0 => 1.0, 0.5 => 2.0, -0.5 => 0.0? clamp)
+            double mult = 1.0 + speed;
+            if (mult < 0.1) mult = 0.1;
+            if (mult > 5.0) mult = 5.0;
+            dx *= mult;
+            dy *= mult;
+        }
+    }
+    wlr_cursor_move(comp->getCursor(), &event->pointer->base, dx, dy);
     self->processMotion(event->time_msec);
 }
 
@@ -67,8 +85,17 @@ void cursor_handle_axis(wl_listener *listener, void *data)
     CursorManager *self = wl_container_of(listener, self, axisListener);
     struct wlr_pointer_axis_event *event = (struct wlr_pointer_axis_event *)data;
     Compositor *comp = self->compositor;
+    double delta = event->delta;
+    int32_t delta_discrete = event->delta_discrete;
+    if (comp->getConfig()) {
+        double factor = comp->getConfig()->mouse.scroll_factor;
+        if (factor != 1.0 && factor > 0) {
+            delta *= factor;
+            delta_discrete = (int32_t)(delta_discrete * factor);
+        }
+    }
     wlr_seat_pointer_notify_axis(comp->getSeat(), event->time_msec,
-        event->orientation, event->delta, event->delta_discrete,
+        event->orientation, delta, delta_discrete,
         event->source, event->relative_direction);
 }
 

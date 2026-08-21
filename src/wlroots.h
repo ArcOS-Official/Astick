@@ -61,7 +61,9 @@ extern "C" {
 #include <wlr/types/wlr_layer_shell_v1.h>
 #undef namespace
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 }
 #undef static
+#include <libinput.h>

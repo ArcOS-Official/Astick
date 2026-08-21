@@ -21,6 +21,7 @@
 #include <qobject.h>
 #include "../wlroots.h"
 
+struct KeyboardConfig;
 class Keyboard : public QObject {
     Q_OBJECT
 
@@ -28,6 +29,7 @@ public:
     Keyboard(struct wlr_input_device *device, struct wlr_seat *seat);
     ~Keyboard();
     struct wlr_keyboard *getKeyboard() const { return wlrKeyboard; }
+    void applyConfig(const KeyboardConfig &cfg);
 
     friend void keyboard_handle_modifiers(struct wl_listener *listener, void *data);
     friend void keyboard_handle_key(struct wl_listener *listener, void *data);

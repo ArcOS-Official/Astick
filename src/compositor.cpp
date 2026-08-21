@@ -76,25 +76,105 @@ void Compositor::onOutputAdded(struct wlr_output *output)
 {
     wlr_output_init_render(output, allocator, renderer);
 
+    std::string oid = Config::outputId(output);
+    OutputEntry entry{};
+    bool hasEntry = false;
+    DefaultOutput def{};
+    if (config) {
+        auto it = config->monitors.find(oid);
+        if (it != config->monitors.end()) {
+            entry = it->second;
+            hasEntry = true;
+            wlr_log(WLR_INFO, "Output %s matched config %dx%d@%.2f scale %.2f", oid.c_str(), entry.width, entry.height, entry.refresh, entry.scale);
+        } else {
+            def = config->defaultOutput;
+            wlr_log(WLR_INFO, "Output %s not in config, using default/recommended (default %dx%d@%.2f)", oid.c_str(), def.width, def.height, def.refresh);
+        }
+        double dpi = config->detectDpi(output);
+        wlr_log(WLR_INFO, "Output %s DPI detected: %.1f (phys %dx%d mm, mode %dx%d)", oid.c_str(), dpi, output->phys_width, output->phys_height, output->width, output->height);
+    } else {
+        def = DefaultOutput{};
+    }
+
+    // Build single state with mode + scale and try to commit once
     struct wlr_output_state state;
     wlr_output_state_init(&state);
     wlr_output_state_set_enabled(&state, true);
 
-    struct wlr_output_mode *mode = wlr_output_preferred_mode(output);
-    if (mode != nullptr) {
-        wlr_output_state_set_mode(&state, mode);
+    struct wlr_output_mode *preferred = wlr_output_preferred_mode(output);
+    double desiredScale = 1.0;
+    if (config) {
+        // Determine scale via DPI detector / config
+        OutputEntry scaleProbe = hasEntry ? entry : OutputEntry{};
+        if (!hasEntry) {
+            scaleProbe.width = def.width;
+            scaleProbe.height = def.height;
+            scaleProbe.refresh = def.refresh;
+            scaleProbe.scale = def.scale;
+        }
+        desiredScale = config->getOutputScale(output, scaleProbe);
+        if (desiredScale < 0.5) desiredScale = 1.0;
+        wlr_log(WLR_INFO, "Output %s: scale %.2f", oid.c_str(), desiredScale);
+        wlr_output_state_set_scale(&state, (float)desiredScale);
+    }
+
+    // Try config mode first if present
+    if (hasEntry && entry.width > 0 && entry.height > 0) {
+        int refresh_mhz = entry.refresh > 0 ? (int)(entry.refresh * 1000) : 0;
+        if (refresh_mhz == 0 && preferred) refresh_mhz = preferred->refresh;
+        if (refresh_mhz == 0) refresh_mhz = (int)(def.refresh * 1000);
+        wlr_output_state_set_custom_mode(&state, entry.width, entry.height, refresh_mhz);
+        wlr_log(WLR_INFO, "Output %s: trying config mode %dx%d@%d mHz", oid.c_str(), entry.width, entry.height, refresh_mhz);
+    } else if (preferred) {
+        wlr_output_state_set_mode(&state, preferred);
+        wlr_log(WLR_INFO, "Output %s: using preferred mode %dx%d@%d", oid.c_str(), preferred->width, preferred->height, preferred->refresh);
     } else {
-        wlr_output_state_set_custom_mode(&state, output->width, output->height, 60000);
-        if (!wlr_output_commit_state(output, &state)) {
-            wlr_log(WLR_INFO, "custom mode rejected, enabling output without a mode");
+        int w = hasEntry && entry.width > 0 ? entry.width : def.width;
+        int h = hasEntry && entry.height > 0 ? entry.height : def.height;
+        double ref = hasEntry && entry.refresh > 0 ? entry.refresh : def.refresh;
+        int refresh_mhz = (int)(ref * 1000);
+        if (w <= 0) w = output->width ? output->width : 1280;
+        if (h <= 0) h = output->height ? output->height : 720;
+        wlr_output_state_set_custom_mode(&state, w, h, refresh_mhz);
+        wlr_log(WLR_INFO, "Output %s: using fallback custom mode %dx%d@%d", oid.c_str(), w, h, refresh_mhz);
+    }
+
+    bool committed = wlr_output_commit_state(output, &state);
+    if (!committed) {
+        wlr_log(WLR_INFO, "Output %s: state commit failed, retrying without custom mode/scale", oid.c_str());
+        wlr_output_state_finish(&state);
+        wlr_output_state_init(&state);
+        wlr_output_state_set_enabled(&state, true);
+        if (preferred) {
+            wlr_output_state_set_mode(&state, preferred);
+            wlr_log(WLR_INFO, "Output %s: retry with preferred mode", oid.c_str());
+        }
+        // try without scale if scale was the issue
+        committed = wlr_output_commit_state(output, &state);
+        if (!committed) {
+            wlr_log(WLR_INFO, "Output %s: retry without mode, just enable", oid.c_str());
             wlr_output_state_finish(&state);
             wlr_output_state_init(&state);
             wlr_output_state_set_enabled(&state, true);
+            wlr_output_commit_state(output, &state);
         }
+    } else {
+        wlr_log(WLR_INFO, "Output %s: committed state %dx%d scale %.2f", oid.c_str(), output->width, output->height, desiredScale);
     }
-
-    wlr_output_commit_state(output, &state);
     wlr_output_state_finish(&state);
+
+    // Persist new output if not in config
+    if (config && !hasEntry) {
+        OutputEntry newEntry;
+        newEntry.width = output->width;
+        newEntry.height = output->height;
+        newEntry.refresh = output->refresh ? output->refresh / 1000.0 : def.refresh;
+        newEntry.scale = desiredScale;
+        newEntry.enabled = true;
+        config->monitors[oid] = newEntry;
+        config->save();
+        wlr_log(WLR_INFO, "Output %s: saved new entry to config", oid.c_str());
+    }
 
     Output *out = new Output(output, renderer, allocator, scene);
     outputs.append(out);
@@ -108,8 +188,18 @@ void Compositor::onOutputAdded(struct wlr_output *output)
     layout->activateWorkspace(out->getWorkspace());
     rearrangeTiled();
 
-    struct wlr_output_layout_output *lout =
-        wlr_output_layout_add_auto(outputLayout, output);
+    struct wlr_output_layout_output *lout = nullptr;
+    if (config) {
+        auto it = config->monitors.find(oid);
+        if (it != config->monitors.end() && it->second.x != INT_MIN && it->second.y != INT_MIN) {
+            lout = wlr_output_layout_add(outputLayout, output, it->second.x, it->second.y);
+            wlr_log(WLR_INFO, "Output %s: placed at %d,%d from config", oid.c_str(), it->second.x, it->second.y);
+        } else {
+            lout = wlr_output_layout_add_auto(outputLayout, output);
+        }
+    } else {
+        lout = wlr_output_layout_add_auto(outputLayout, output);
+    }
     struct wlr_scene_output *rout = wlr_scene_output_create(scene, output);
     wlr_scene_output_layout_add_output(sceneLayout, lout, rout);
 }
@@ -404,6 +494,7 @@ void Compositor::rearrangeTiled()
 void Compositor::addKeyboard(struct wlr_input_device *device)
 {
     Keyboard *kb = new Keyboard(device, seat);
+    if (config) kb->applyConfig(config->keyboard);
     keyboards.append(kb);
     connect(kb, &Keyboard::keyPressed, this, [this, kb](struct wlr_keyboard_key_event *event) {
         uint32_t keycode = event->keycode + 8;
@@ -413,51 +504,86 @@ void Compositor::addKeyboard(struct wlr_input_device *device)
 
         bool handled = false;
         uint32_t modifiers = wlr_keyboard_get_modifiers(kb->getKeyboard());
-        if ((modifiers & WLR_MODIFIER_ALT) &&
-                event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-            for (int i = 0; i < nsyms; i++) {
-                switch (syms[i]) {
-                case XKB_KEY_Escape:
-                    wl_display_terminate(display);
-                    handled = true;
-                    break;
-                case XKB_KEY_F1:
-                    if (toplevels.size() >= 2) {
-                        focusToplevel(toplevels.last());
+
+        if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+            for (int i = 0; i < nsyms && !handled; i++) {
+                xkb_keysym_t sym = syms[i];
+                const Keybind *kbnd = nullptr;
+                if (config) kbnd = config->findKeybind(modifiers, sym);
+                if (kbnd) {
+                    const std::string &act = kbnd->action;
+                    if (act == "quit" || act == "exit" || act == "terminate") {
+                        wl_display_terminate(display);
+                    } else if (act == "focus_prev") {
+                        if (toplevels.size() >= 2) focusToplevel(toplevels.last());
+                    } else if (act == "focus_next") {
+                        if (!toplevels.isEmpty()) focusToplevel(toplevels.first());
+                    } else if (act == "toggle_layout" || act == "toggle") {
+                        if (!outputs.isEmpty()) {
+                            Output *out = outputs.first();
+                            int ws = out->getWorkspace();
+                            auto mode = layout->getWorkspaceLayoutMode(ws);
+                            int next = ((int)mode + 1) % 3;
+                            layout->setWorkspaceLayoutMode(ws, (LayoutManager::Mode)next);
+                            arrangeForOutput(out);
+                        }
+                    } else if (act == "new_workspace") {
+                        if (!outputs.isEmpty()) {
+                            Output *out = outputs.first();
+                            int newWs = layout->createWorkspace();
+                            out->setWorkspace(newWs);
+                        }
+                    } else if (act == "goto_workspace") {
+                        if (!outputs.isEmpty() && !kbnd->arg.empty()) {
+                            int ws = std::atoi(kbnd->arg.c_str());
+                            if (ws > 0) outputs.first()->setWorkspace(ws);
+                        }
+                    } else if (act == "close_window" || act == "kill") {
+                        if (seat->keyboard_state.focused_surface) {
+                            struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
+                            if (tl) wlr_xdg_toplevel_send_close(tl);
+                        }
+                    } else {
+                        wlr_log(WLR_INFO, "Unknown keybind action %s", act.c_str());
+                        continue;
                     }
                     handled = true;
-                    break;
-                case XKB_KEY_F2: {
-                    if (outputs.isEmpty()) break;
-                    Output *out = outputs.first();
-                    int ws = out->getWorkspace();
-                    auto mode = layout->getWorkspaceLayoutMode(ws);
-                    int next = ((int)mode + 1) % 3;
-                    layout->setWorkspaceLayoutMode(ws, (LayoutManager::Mode)next);
-                    arrangeForOutput(out);
-                    handled = true;
-                    break;
-                }
-                case XKB_KEY_F3: {
-                    if (outputs.isEmpty()) break;
-                    Output *out = outputs.first();
-                    int newWs = layout->createWorkspace();
-                    out->setWorkspace(newWs);
-                    handled = true;
-                    break;
-                }
-                case XKB_KEY_F4: {
-                    if (outputs.isEmpty()) break;
-                    Output *out = outputs.first();
-                    int ws = out->getWorkspace();
-                    if (ws > 1) {
-                        out->setWorkspace(1);
+                } else {
+                    // Fallback hardcoded Alt+ keys for backwards compat when no config match
+                    if ((modifiers & WLR_MODIFIER_ALT) && !config) {
+                        switch (sym) {
+                        case XKB_KEY_Escape: wl_display_terminate(display); handled = true; break;
+                        case XKB_KEY_F1: if (toplevels.size() >= 2) focusToplevel(toplevels.last()); handled = true; break;
+                        case XKB_KEY_F2: {
+                            if (!outputs.isEmpty()) {
+                                Output *out = outputs.first();
+                                int ws = out->getWorkspace();
+                                auto mode = layout->getWorkspaceLayoutMode(ws);
+                                int next = ((int)mode + 1) % 3;
+                                layout->setWorkspaceLayoutMode(ws, (LayoutManager::Mode)next);
+                                arrangeForOutput(out);
+                            }
+                            handled = true; break;
+                        }
+                        case XKB_KEY_F3: {
+                            if (!outputs.isEmpty()) {
+                                Output *out = outputs.first();
+                                int newWs = layout->createWorkspace();
+                                out->setWorkspace(newWs);
+                            }
+                            handled = true; break;
+                        }
+                        case XKB_KEY_F4: {
+                            if (!outputs.isEmpty()) {
+                                Output *out = outputs.first();
+                                int ws = out->getWorkspace();
+                                if (ws > 1) out->setWorkspace(1);
+                            }
+                            handled = true; break;
+                        }
+                        default: break;
+                        }
                     }
-                    handled = true;
-                    break;
-                }
-                default:
-                    break;
                 }
             }
         }
@@ -473,13 +599,18 @@ void Compositor::addKeyboard(struct wlr_input_device *device)
 void Compositor::addMouse(struct wlr_input_device *device)
 {
     Mouse *mouse = new Mouse(device);
+    if (config) mouse->applyConfig(config->mouse);
     mice.append(mouse);
     wlr_cursor_attach_input_device(cursor, device);
+    if (config && config->mouse.speed != 0) {
+        wlr_log(WLR_INFO, "Mouse %s speed multiplier %.2f", device->name ? device->name : "unknown", config->mouse.speed);
+    }
 }
 
 // Compositor lifecycle
 
-Compositor::Compositor(const Astick &app)
+Compositor::Compositor(const Astick &app, Config *cfg)
+    : config(cfg)
 {
     connect(&app, &Astick::aboutToRun, this, &Compositor::run);
 
