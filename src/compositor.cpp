@@ -119,8 +119,12 @@ void Compositor::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
     struct wlr_scene_tree *tree = wlr_scene_xdg_surface_create(
         &scene->tree, xtoplevel->base
     );
-    wlr_scene_node_place_below(&tree->node,
-        &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
+    if (popupTree) {
+        wlr_scene_node_place_below(&tree->node, &popupTree->node);
+    } else {
+        wlr_scene_node_place_below(&tree->node,
+            &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
+    }
     Toplevel *toplevel = new Toplevel(this, xtoplevel, tree);
     toplevels.append(toplevel);
 
@@ -251,7 +255,12 @@ void Compositor::focusToplevel(Toplevel *toplevel)
     }
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-    wlr_scene_node_raise_to_top(&toplevel->getSceneTree()->node);
+    if (popupTree) {
+        wlr_scene_node_place_below(&toplevel->getSceneTree()->node, &popupTree->node);
+    } else {
+        wlr_scene_node_place_below(&toplevel->getSceneTree()->node,
+            &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
+    }
     toplevels.removeOne(toplevel);
     toplevels.prepend(toplevel);
     wlr_xdg_toplevel_set_activated(toplevel->get(), true);
@@ -513,6 +522,9 @@ Compositor::Compositor(const Astick &app)
             i <= ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; i++) {
         layerTrees[i] = wlr_scene_tree_create(&scene->tree);
     }
+    popupTree = wlr_scene_tree_create(&scene->tree);
+    wlr_scene_node_place_below(&popupTree->node,
+        &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
 
     xdgShell = wlr_xdg_shell_create(display, 3);
     layerShell = wlr_layer_shell_v1_create(display, 5);

@@ -68,21 +68,34 @@ Popup::Popup(
                 popup_tree->node.y + layer_tree->node.y);
         }
     } else {
-        struct wlr_scene_tree *parent_tree = nullptr;
         struct wlr_xdg_surface *xdg_parent =
             wlr_xdg_surface_try_from_wlr_surface(popup->parent);
+        struct wlr_scene_tree *parent_tree = nullptr;
         if (xdg_parent != nullptr && xdg_parent->data != nullptr) {
             parent_tree = (struct wlr_scene_tree *)xdg_parent->data;
         }
-        if (parent_tree != nullptr) {
-            popup->base->data =
-                wlr_scene_xdg_surface_create(parent_tree, popup->base);
-        } else {
-            struct wlr_scene_tree *fallback =
+        // xdg popups (window context menus etc.) must be on top of the
+        // current window layer, not buried under a sibling tiled window.
+        // Put them in popupTree (between windows and TOP) and offset to
+        // parent's absolute position.
+        struct wlr_scene_tree *popup_parent = server->getPopupTree();
+        if (!popup_parent) popup_parent = parent_tree;
+        if (!popup_parent) {
+            popup_parent =
                 server->getLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
-            if (!fallback) fallback = &server->getScene()->tree;
-            popup->base->data =
-                wlr_scene_xdg_surface_create(fallback, popup->base);
+        }
+        if (!popup_parent) popup_parent = &server->getScene()->tree;
+        popup->base->data =
+            wlr_scene_xdg_surface_create(popup_parent, popup->base);
+        if (parent_tree && popup_parent != parent_tree && popup->base->data) {
+            struct wlr_scene_tree *popup_tree =
+                (struct wlr_scene_tree *)popup->base->data;
+            // popup position is currently relative to parent surface (0,0 in
+            // popupTree). Make it absolute so it appears anchored to the
+            // parent window at its current tiled position.
+            wlr_scene_node_set_position(&popup_tree->node,
+                popup_tree->node.x + parent_tree->node.x,
+                popup_tree->node.y + parent_tree->node.y);
         }
     }
 

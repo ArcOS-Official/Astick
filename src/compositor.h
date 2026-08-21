@@ -44,6 +44,7 @@ public:
     struct wlr_scene *getScene() { return scene; }
     struct wlr_output_layout *getOutputLayout() { return outputLayout; }
     struct wlr_scene_tree *getLayerTree(uint32_t layer) { return layerTrees[layer]; }
+    struct wlr_scene_tree *getPopupTree() { return popupTree; }
     struct wl_display *getDisplay() { return display; }
     struct wlr_seat *getSeat() { return seat; }
     struct wlr_cursor *getCursor() { return cursor; }
@@ -93,6 +94,7 @@ private:
     struct wlr_xdg_shell *xdgShell = nullptr;
     struct wlr_layer_shell_v1 *layerShell = nullptr;
     struct wlr_scene_tree *layerTrees[4] = {};
+    struct wlr_scene_tree *popupTree = nullptr;
     struct wlr_cursor *cursor = nullptr;
     struct wlr_xcursor_manager *cursorMgr = nullptr;
     struct wlr_seat *seat = nullptr;
