@@ -33,8 +33,41 @@ void Config::ensureDefaults() {
             {{"Alt"}, "F2", "toggle_layout", "", 0, XKB_KEY_NoSymbol},
             {{"Alt"}, "F3", "new_workspace", "", 0, XKB_KEY_NoSymbol},
             {{"Alt"}, "F4", "goto_workspace", "1", 0, XKB_KEY_NoSymbol},
+            {{"Alt"}, "t", "swap_orientation", "", 0, XKB_KEY_NoSymbol},
+            {{"Alt"}, "f", "toggle_floating", "", 0, XKB_KEY_NoSymbol},
+            {{"Alt"}, "m", "toggle_maximize", "", 0, XKB_KEY_NoSymbol},
+            {{}, "F11", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol},
+            {{"Alt"}, "Return", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol},
         };
         parseKeybinds();
+    } else {
+        bool hasSwap = false;
+        bool hasFloating = false;
+        bool hasMaximize = false;
+        bool hasFullscreen = false;
+        for (auto &k : keybinds) {
+            if (k.action == "swap_orientation" || k.action == "toggle_split") hasSwap = true;
+            if (k.action == "toggle_floating" || k.action == "toggle_float" || k.action == "floating_toggle") hasFloating = true;
+            if (k.action == "toggle_maximize" || k.action == "maximize" || k.action == "toggle_maximized") hasMaximize = true;
+            if (k.action == "toggle_fullscreen" || k.action == "fullscreen" || k.action == "toggle_fullscreened") hasFullscreen = true;
+        }
+        if (!hasSwap) {
+            keybinds.push_back({{"Alt"}, "t", "swap_orientation", "", 0, XKB_KEY_NoSymbol});
+            parseKeybinds();
+        }
+        if (!hasFloating) {
+            keybinds.push_back({{"Alt"}, "f", "toggle_floating", "", 0, XKB_KEY_NoSymbol});
+            parseKeybinds();
+        }
+        if (!hasMaximize) {
+            keybinds.push_back({{"Alt"}, "m", "toggle_maximize", "", 0, XKB_KEY_NoSymbol});
+            parseKeybinds();
+        }
+        if (!hasFullscreen) {
+            keybinds.push_back({{}, "F11", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol});
+            keybinds.push_back({{"Alt"}, "Return", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol});
+            parseKeybinds();
+        }
     }
 }
 
@@ -193,6 +226,21 @@ bool Config::load(const std::filesystem::path &path) {
             if (in.contains("keyboard")) keyboard = in["keyboard"].get<KeyboardConfig>();
             if (in.contains("mouse")) mouse = in["mouse"].get<MouseConfig>();
         }
+        if (j.contains("layout") && j["layout"].is_object()) {
+            bsp = j["layout"].get<BspConfig>();
+        }
+        if (j.contains("bsp") && j["bsp"].is_object()) {
+            // alternative key for backwards compat
+            bsp = j["bsp"].get<BspConfig>();
+        }
+        if (j.contains("tiling") && j["tiling"].is_object()) {
+            auto &t = j["tiling"];
+            if (t.contains("bsp_split_ratio")) t.at("bsp_split_ratio").get_to(bsp.split_ratio);
+            if (t.contains("bsp_opposite")) t.at("bsp_opposite").get_to(bsp.opposite_orientation);
+            if (t.contains("bsp_keep_ratio_on_drop")) t.at("bsp_keep_ratio_on_drop").get_to(bsp.keep_ratio_on_drop);
+            if (t.contains("bsp_min_ratio")) t.at("bsp_min_ratio").get_to(bsp.min_ratio);
+            if (t.contains("bsp_max_ratio")) t.at("bsp_max_ratio").get_to(bsp.max_ratio);
+        }
         if (j.contains("keybinds") && j["keybinds"].is_array()) {
             keybinds = j["keybinds"].get<std::vector<Keybind>>();
             parseKeybinds();
@@ -201,6 +249,7 @@ bool Config::load(const std::filesystem::path &path) {
         }
         // Also support legacy flat keybinds? ensure
         if (keybinds.empty()) ensureDefaults();
+        else ensureDefaults(); // ensure swap_orientation present
     } catch (const std::exception &e) {
         std::cerr << "Config load error: " << e.what() << std::endl;
         ensureDefaults();
@@ -225,6 +274,7 @@ bool Config::save(const std::filesystem::path &path) const {
         j["input"] = nlohmann::json::object();
         j["input"]["keyboard"] = keyboard;
         j["input"]["mouse"] = mouse;
+        j["layout"] = bsp;
         j["keybinds"] = keybinds;
         std::ofstream f(p);
         if (!f) return false;
@@ -321,5 +371,23 @@ void from_json(const nlohmann::json &j, Keybind &k) {
     if (j.contains("action")) j.at("action").get_to(k.action);
     if (j.contains("arg")) j.at("arg").get_to(k.arg);
     // modsMask and keysym will be filled by Config::parseKeybinds
+}
+void to_json(nlohmann::json &j, const BspConfig &b) {
+    j = nlohmann::json{
+        {"split_ratio", b.split_ratio},
+        {"opposite_orientation", b.opposite_orientation},
+        {"keep_ratio_on_drop", b.keep_ratio_on_drop},
+        {"min_ratio", b.min_ratio},
+        {"max_ratio", b.max_ratio}
+    };
+}
+void from_json(const nlohmann::json &j, BspConfig &b) {
+    if (j.contains("split_ratio")) j.at("split_ratio").get_to(b.split_ratio);
+    if (j.contains("opposite_orientation")) j.at("opposite_orientation").get_to(b.opposite_orientation);
+    if (j.contains("keep_ratio_on_drop")) j.at("keep_ratio_on_drop").get_to(b.keep_ratio_on_drop);
+    if (j.contains("min_ratio")) j.at("min_ratio").get_to(b.min_ratio);
+    if (j.contains("max_ratio")) j.at("max_ratio").get_to(b.max_ratio);
+    if (j.contains("bsp_split_ratio")) j.at("bsp_split_ratio").get_to(b.split_ratio);
+    if (j.contains("bsp_opposite")) j.at("bsp_opposite").get_to(b.opposite_orientation);
 }
 

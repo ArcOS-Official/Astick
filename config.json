@@ -79,8 +79,48 @@
                 "Alt",
                 "Shift"
             ]
+        },
+        {
+            "action": "swap_orientation",
+            "key": "t",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "toggle_floating",
+            "key": "f",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "toggle_maximize",
+            "key": "m",
+            "mods": [
+                "Alt"
+            ]
+        },
+        {
+            "action": "toggle_fullscreen",
+            "key": "F11",
+            "mods": []
+        },
+        {
+            "action": "toggle_fullscreen",
+            "key": "Return",
+            "mods": [
+                "Alt"
+            ]
         }
     ],
+    "layout": {
+        "keep_ratio_on_drop": true,
+        "max_ratio": 0.9,
+        "min_ratio": 0.1,
+        "opposite_orientation": true,
+        "split_ratio": 0.5
+    },
     "outputs": {
         "default": {
             "height": 720,
@@ -107,6 +147,13 @@
                 "width": 1920,
                 "x": 3840,
                 "y": 0
+            },
+            "HEADLESS-1": {
+                "enabled": true,
+                "height": 720,
+                "refresh": 60.0,
+                "scale": 1.0,
+                "width": 1280
             },
             "WL-1": {
                 "enabled": true,

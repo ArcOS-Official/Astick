@@ -57,7 +57,13 @@ public:
     Output *outputForToplevel(Toplevel *toplevel);
     void setInitialLayoutMode(const QString &mode);
     struct wlr_box usableAreaForOutput(struct wlr_output *output);
+    struct wlr_box fullAreaForOutput(struct wlr_output *output);
     Config* getConfig() { return config; }
+    LayoutManager *getLayout() { return layout; }
+    void rearrangeTiled();
+    void arrangeForOutput(Output *out);
+    bool setFullscreen(Toplevel *toplevel, bool fullscreen);
+    bool setMaximized(Toplevel *toplevel, bool maximized);
 
 public slots:
     void run();
@@ -114,6 +120,7 @@ private:
 
     Toplevel *detachedWindow = nullptr;
     int detachedFromWorkspace = -1;
+    double detachedRatio = -1;
 
     struct wl_listener newOutputListener;
     struct wl_listener newXdgToplevelNotifyListener;
@@ -131,6 +138,4 @@ private:
 
     void addKeyboard(struct wlr_input_device *device);
     void addMouse(struct wlr_input_device *device);
-    void rearrangeTiled();
-    void arrangeForOutput(Output *out);
 };

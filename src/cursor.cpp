@@ -192,6 +192,9 @@ void CursorManager::processMotion(uint32_t time)
 void CursorManager::processMove()
 {
     Toplevel *toplevel = grabbedToplevel;
+    if (!toplevel) return;
+    auto *layout = compositor->getLayout();
+    if (layout && (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel))) return;
     struct wlr_cursor *cursor = compositor->getCursor();
     double nx = cursor->x - grabX;
     double ny = cursor->y - grabY;
@@ -212,11 +215,36 @@ void CursorManager::processMove()
     }
 
     wlr_scene_node_set_position(&toplevel->getSceneTree()->node, nx, ny);
+
+    // Persist floating window geometry while tiling workspace (store node position)
+    if (layout && layout->isFloating(toplevel)) {
+        struct wlr_box *geo = &toplevel->get()->base->geometry;
+        int fx = (int)nx;
+        int fy = (int)ny;
+        int fw = geo->width > 0 ? geo->width : 800;
+        int fh = geo->height > 0 ? geo->height : 600;
+        layout->updateFloatingGeometry(toplevel, fx, fy, fw, fh);
+    }
 }
 
 void CursorManager::processResize()
 {
     Toplevel *toplevel = grabbedToplevel;
+    if (!toplevel) return;
+
+    auto *layout = compositor->getLayout();
+    if (layout && (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel))) return;
+    int ws = layout ? layout->getWindowWorkspace(toplevel) : -1;
+    bool isFloatingWindow = layout && layout->isFloating(toplevel);
+    // Guard: if workspace has no other tiled windows, don't resize via BSP; floating windows are always resizable
+    if (ws >= 0 && layout && !isFloatingWindow) {
+        auto mode = layout->getWorkspaceLayoutMode(ws);
+        if ((mode == LayoutManager::Mode::Tiling || mode == LayoutManager::Mode::MonoWindow)
+            && layout->tiledCount(ws) <= 1) {
+            return;
+        }
+    }
+
     struct wlr_cursor *cursor = compositor->getCursor();
     double border_x = cursor->x - grabX;
     double border_y = cursor->y - grabY;
@@ -241,8 +269,11 @@ void CursorManager::processResize()
         if (new_right <= new_left) new_right = new_left + 1;
     }
 
+    struct wlr_box usable = {};
+    bool hasUsable = false;
     if (auto *out = compositor->outputForToplevel(toplevel)) {
-        struct wlr_box usable = compositor->usableAreaForOutput(out->get());
+        usable = compositor->usableAreaForOutput(out->get());
+        hasUsable = true;
         if (new_left < usable.x) new_left = usable.x;
         if (new_top < usable.y) new_top = usable.y;
         if (new_right > usable.x + usable.width) new_right = usable.x + usable.width;
@@ -251,13 +282,32 @@ void CursorManager::processResize()
         if (new_top >= new_bottom) new_top = new_bottom - 1;
     }
 
+    // Hyprland-like tiling resize: adjust BSP ratio directly, no window-first stacking
+    // Skip for floating windows - they should be freely resized
+    if (!isFloatingWindow && ws >= 0 && layout && hasUsable && layout->tiledCount(ws) > 1) {
+        auto mode = layout->getWorkspaceLayoutMode(ws);
+        if (mode == LayoutManager::Mode::Tiling) {
+            if (layout->handleResize(toplevel, usable, cursor->x, cursor->y, resizeEdges)) {
+                layout->arrange(usable, ws);
+            }
+            return;
+        }
+    }
+
     struct wlr_box *geo_box = &toplevel->get()->base->geometry;
+    int node_x = new_left - geo_box->x;
+    int node_y = new_top - geo_box->y;
     wlr_scene_node_set_position(&toplevel->getSceneTree()->node,
-        new_left - geo_box->x, new_top - geo_box->y);
+        node_x, node_y);
 
     int new_width = new_right - new_left;
     int new_height = new_bottom - new_top;
     wlr_xdg_toplevel_set_size(toplevel->get(), new_width, new_height);
+    if (isFloatingWindow && layout) {
+        layout->updateFloatingGeometry(toplevel, node_x, node_y, new_width, new_height);
+    } else if (layout) {
+        layout->updateWindowGeometry(toplevel, node_x, node_y, new_width, new_height);
+    }
 }
 
 void CursorManager::resetMode()
@@ -272,6 +322,20 @@ void CursorManager::resetMode()
 
 void CursorManager::beginInteractive(Toplevel *toplevel, CursorMode mode, uint32_t edges)
 {
+    auto *layoutChk = compositor->getLayout();
+    if (layoutChk && (layoutChk->isFullscreen(toplevel) || layoutChk->isMaximized(toplevel))) return;
+    // Enforce workspace single-window no-resize rule at entry too, but floating windows can always be resized
+    if (mode == CURSOR_RESIZE) {
+        auto *layout = compositor->getLayout();
+        int ws = layout ? layout->getWindowWorkspace(toplevel) : -1;
+        if (ws >= 0 && layout && !layout->isFloating(toplevel)) {
+            auto m = layout->getWorkspaceLayoutMode(ws);
+            if ((m == LayoutManager::Mode::Tiling || m == LayoutManager::Mode::MonoWindow)
+                && layout->tiledCount(ws) <= 1) {
+                return;
+            }
+        }
+    }
     struct wlr_cursor *cursor = compositor->getCursor();
     grabbedToplevel = toplevel;
     cursorMode = mode;

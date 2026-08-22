@@ -225,18 +225,72 @@ void Compositor::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
         onToplevelUnmapped(toplevel);
     });
     connect(toplevel, &Toplevel::moveRequested, this, [this, toplevel]() {
+        if (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel)) return;
         cursorMgrObj->beginInteractive(toplevel, CURSOR_MOVE, 0);
         int ws = layout->getWindowWorkspace(toplevel);
         if (ws > 0 && layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling) {
+            // Floating windows in tiling are moved freely, not detached from BSP
+            if (layout->isFloating(toplevel)) {
+                // No detachment; CursorManager will handle free move and update geometry
+                return;
+            }
             detachedWindow = toplevel;
             detachedFromWorkspace = ws;
+            detachedRatio = layout->getParentRatio(toplevel);
             layout->removeWindow(toplevel);
             rearrangeTiled();
         }
     });
     connect(toplevel, &Toplevel::resizeRequested, this, [this, toplevel](uint32_t edges) {
+        if (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel)) return;
+        // Guard: tiling/monowindow with single window must not resize/drag
+        int ws = layout->getWindowWorkspace(toplevel);
+        if (ws >= 0) {
+            // Floating windows can always be resized even with single tiled window
+            if (layout->isFloating(toplevel)) {
+                cursorMgrObj->beginInteractive(toplevel, CURSOR_RESIZE, edges);
+                rearrangeTiled();
+                return;
+            }
+            auto mode = layout->getWorkspaceLayoutMode(ws);
+            if ((mode == LayoutManager::Mode::Tiling || mode == LayoutManager::Mode::MonoWindow)
+                && layout->tiledCount(ws) <= 1) {
+                return;
+            }
+        }
         cursorMgrObj->beginInteractive(toplevel, CURSOR_RESIZE, edges);
         rearrangeTiled();
+    });
+    connect(toplevel, &Toplevel::maximizeRequested, this, [this, toplevel]() {
+        bool want = toplevel->get()->requested.maximized;
+        setMaximized(toplevel, want);
+    });
+    connect(toplevel, &Toplevel::fullscreenRequested, this, [this, toplevel]() {
+        bool want = toplevel->get()->requested.fullscreen;
+        struct wlr_output *reqOut = toplevel->get()->requested.fullscreen_output;
+        if (want && reqOut) {
+            for (Output *out : outputs) if (out->get() == reqOut) {
+                struct wlr_box full = fullAreaForOutput(out->get());
+                layout->setFullscreen(toplevel, true, full);
+                wlr_xdg_toplevel_set_fullscreen(toplevel->get(), true);
+                if (layout->isMaximized(toplevel)) {
+                    layout->setMaximized(toplevel, false);
+                    wlr_xdg_toplevel_set_maximized(toplevel->get(), false);
+                }
+                for (Output *o : outputs) if (o->getWorkspace() == layout->getWindowWorkspace(toplevel)) arrangeForOutput(o);
+                focusToplevel(toplevel);
+                wlr_xdg_surface_schedule_configure(toplevel->get()->base);
+                return;
+            }
+        }
+        setFullscreen(toplevel, want);
+    });
+    connect(toplevel, &Toplevel::destroyed, this, [this, toplevel]() {
+        int ws = layout->getWindowWorkspace(toplevel);
+        toplevels.removeOne(toplevel);
+        layout->removeWindow(toplevel);
+        if (ws > 0) for (Output *out : outputs) if (out->getWorkspace() == ws) arrangeForOutput(out);
+        else rearrangeTiled();
     });
 }
 
@@ -304,9 +358,32 @@ void Compositor::onInputAdded(struct wlr_input_device *device)
 
 void Compositor::onToplevelMapped(Toplevel *toplevel)
 {
+    // Capture focused window before new window becomes focused, for BSP split
+    Toplevel *focusedBefore = nullptr;
+    if (seat && seat->keyboard_state.focused_surface) {
+        struct wlr_xdg_toplevel *prev = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
+        if (prev) {
+            for (Toplevel *t : toplevels) {
+                if (t->get() == prev) { focusedBefore = t; break; }
+            }
+        }
+    }
     focusToplevel(toplevel);
     int ws = outputs.isEmpty() ? 1 : outputs.first()->getWorkspace();
-    layout->addWindow(toplevel, ws);
+    struct wlr_box usable = {0,0,1920,1080};
+    Output *outForWs = nullptr;
+    for (Output *o : outputs) if (o->getWorkspace() == ws) { outForWs = o; break; }
+    if (!outForWs && !outputs.isEmpty()) outForWs = outputs.first();
+    if (outForWs) usable = usableAreaForOutput(outForWs->get());
+    double cx = cursor ? cursor->x : usable.x + usable.width/2.0;
+    double cy = cursor ? cursor->y : usable.y + usable.height/2.0;
+    // Use BSP-aware add if workspace is tiling, else fallback
+    auto wsMode = layout->getWorkspaceLayoutMode(ws);
+    if (wsMode == LayoutManager::Mode::Tiling) {
+        layout->addWindow(toplevel, ws, focusedBefore, usable, cx, cy);
+    } else {
+        layout->addWindow(toplevel, ws);
+    }
     rearrangeTiled();
     emit toplevelMapped(toplevel);
 }
@@ -319,10 +396,15 @@ void Compositor::onToplevelUnmapped(Toplevel *toplevel)
     if (toplevel == detachedWindow) {
         detachedWindow = nullptr;
         detachedFromWorkspace = -1;
+        detachedRatio = -1;
     }
+    int wsBefore = layout->getWindowWorkspace(toplevel);
     toplevels.removeOne(toplevel);
     layout->removeWindow(toplevel);
     rearrangeTiled();
+    if (wsBefore > 0) {
+        for (Output *out : outputs) if (out->getWorkspace() == wsBefore) arrangeForOutput(out);
+    }
     emit toplevelUnmapped(toplevel);
 }
 
@@ -371,9 +453,20 @@ void Compositor::focusToplevel(Toplevel *toplevel)
     }
 }
 
-Output *Compositor::outputForToplevel(Toplevel *)
+Output *Compositor::outputForToplevel(Toplevel *toplevel)
 {
     if (outputs.isEmpty()) return nullptr;
+    if (toplevel && layout) {
+        int ws = layout->getWindowWorkspace(toplevel);
+        if (ws > 0) {
+            for (Output *out : outputs) if (out->getWorkspace() == ws) return out;
+        }
+    }
+    // Fallback: output containing cursor
+    if (cursor && outputLayout) {
+        struct wlr_output *wout = wlr_output_layout_output_at(outputLayout, cursor->x, cursor->y);
+        if (wout) for (Output *out : outputs) if (out->get() == wout) return out;
+    }
     return outputs.first();
 }
 
@@ -473,20 +566,117 @@ struct wlr_box Compositor::usableAreaForOutput(struct wlr_output *wlr_output)
     return usable;
 }
 
+struct wlr_box Compositor::fullAreaForOutput(struct wlr_output *wlr_output)
+{
+    struct wlr_box full = {0, 0, 0, 0};
+    if (outputLayout && wlr_output) {
+        wlr_output_layout_get_box(outputLayout, wlr_output, &full);
+        if (full.width == 0 && full.height == 0) {
+            full = {0, 0, wlr_output->width, wlr_output->height};
+        }
+    } else if (wlr_output) {
+        full = {0, 0, wlr_output->width, wlr_output->height};
+    }
+    return full;
+}
+
 void Compositor::arrangeForOutput(Output *out)
 {
     if (!out) return;
     struct wlr_box usable = usableAreaForOutput(out->get());
-    layout->arrange(usable, out->getWorkspace());
+    struct wlr_box full = fullAreaForOutput(out->get());
+    layout->arrange(usable, full, out->getWorkspace());
+    int ws = out->getWorkspace();
+    // Handle layer visibility for fullscreen (hide shell) and ensure stacking respects popupTree
+    bool isFs = layout->getFullscreenWindow(ws) != nullptr;
+    for (LayerSurface *ls : layers) {
+        if (ls->get()->output != out->get()) continue;
+        struct wlr_scene_layer_surface_v1 *sl = ls->getSceneLayer();
+        if (!sl) continue;
+        if (isFs) {
+            wlr_scene_node_set_enabled(&sl->tree->node, false);
+        } else {
+            // Restore visibility based on mapped state
+            bool shouldEnable = ls->get()->surface->mapped;
+            wlr_scene_node_set_enabled(&sl->tree->node, shouldEnable);
+        }
+    }
+    // Fix stacking: keep windows below popupTree (as per popup fix 42765e7)
+    if (Toplevel *fs = layout->getFullscreenWindow(ws)) {
+        if (fs->getSceneTree() && popupTree) {
+            wlr_scene_node_place_below(&fs->getSceneTree()->node, &popupTree->node);
+        }
+    } else if (Toplevel *mx = layout->getMaximizedWindow(ws)) {
+        if (mx->getSceneTree() && popupTree) {
+            wlr_scene_node_place_below(&mx->getSceneTree()->node, &popupTree->node);
+        }
+    } else {
+        // Tiling with floating windows: floating above tiled but below popup
+        auto floating = layout->getFloatingWindows(ws);
+        for (Toplevel *fw : floating) {
+            if (fw->getSceneTree() && popupTree) {
+                wlr_scene_node_place_below(&fw->getSceneTree()->node, &popupTree->node);
+            }
+        }
+    }
 }
 
 void Compositor::rearrangeTiled()
 {
     for (Output *out : outputs) {
         int ws = out->getWorkspace();
-        if (layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling)
+        if (layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling
+            || layout->getFullscreenWindow(ws)
+            || layout->getMaximizedWindow(ws))
             arrangeForOutput(out);
     }
+}
+
+bool Compositor::setFullscreen(Toplevel *toplevel, bool fullscreen)
+{
+    if (!toplevel || !layout) return false;
+    int ws = layout->getWindowWorkspace(toplevel);
+    if (ws < 0) return false;
+    Output *out = outputForToplevel(toplevel);
+    struct wlr_box full = out ? fullAreaForOutput(out->get()) : (struct wlr_box){0,0,1920,1080};
+    bool changed = layout->setFullscreen(toplevel, fullscreen, full);
+    if (!changed) {
+        wlr_xdg_toplevel_set_fullscreen(toplevel->get(), fullscreen);
+        if (out) arrangeForOutput(out);
+        wlr_xdg_surface_schedule_configure(toplevel->get()->base);
+        return false;
+    }
+    wlr_xdg_toplevel_set_fullscreen(toplevel->get(), fullscreen);
+    if (fullscreen) {
+        if (layout->isMaximized(toplevel)) layout->setMaximized(toplevel, false);
+        wlr_xdg_toplevel_set_maximized(toplevel->get(), false);
+    }
+    for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+    wlr_xdg_surface_schedule_configure(toplevel->get()->base);
+    if (fullscreen) focusToplevel(toplevel);
+    return true;
+}
+
+bool Compositor::setMaximized(Toplevel *toplevel, bool maximized)
+{
+    if (!toplevel || !layout) return false;
+    int ws = layout->getWindowWorkspace(toplevel);
+    if (ws < 0) return false;
+    if (maximized && layout->isFullscreen(toplevel)) return false;
+    if (maximized && layout->getFullscreenWindow(ws)) return false;
+    bool changed = layout->setMaximized(toplevel, maximized);
+    if (!changed) {
+        wlr_xdg_toplevel_set_maximized(toplevel->get(), maximized);
+        Output *out = outputForToplevel(toplevel);
+        if (out && layout->getWindowWorkspace(toplevel) == ws) arrangeForOutput(out);
+        wlr_xdg_surface_schedule_configure(toplevel->get()->base);
+        return false;
+    }
+    wlr_xdg_toplevel_set_maximized(toplevel->get(), maximized);
+    for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+    wlr_xdg_surface_schedule_configure(toplevel->get()->base);
+    if (maximized) focusToplevel(toplevel);
+    return true;
 }
 
 // Input device helpers
@@ -542,6 +732,109 @@ void Compositor::addKeyboard(struct wlr_input_device *device)
                         if (seat->keyboard_state.focused_surface) {
                             struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
                             if (tl) wlr_xdg_toplevel_send_close(tl);
+                        }
+                    } else if (act == "swap_orientation" || act == "toggle_split" || act == "toggle_orientation") {
+                        Toplevel *focused = nullptr;
+                        if (seat->keyboard_state.focused_surface) {
+                            struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
+                            if (tl) {
+                                for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+                            }
+                        }
+                        if (focused) {
+                            int ws = layout->getWindowWorkspace(focused);
+                            if (ws > 0 && layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling) {
+                                bool ok = layout->toggleSplitOrientation(ws, focused);
+                                if (ok) {
+                                    for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+                                } else {
+                                    wlr_log(WLR_INFO, "swap_orientation: no branch to toggle (single leaf)");
+                                }
+                            }
+                        } else {
+                            wlr_log(WLR_INFO, "swap_orientation: no focused window");
+                        }
+                    } else if (act == "toggle_floating" || act == "toggle_float" || act == "floating_toggle" || act == "set_floating") {
+                        Toplevel *focused = nullptr;
+                        if (seat->keyboard_state.focused_surface) {
+                            struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
+                            if (tl) {
+                                for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+                            }
+                        }
+                        if (focused) {
+                            int ws = layout->getWindowWorkspace(focused);
+                            if (ws > 0) {
+                                struct wlr_box usable = {0,0,1920,1080};
+                                for (Output *o : outputs) if (o->getWorkspace() == ws) { usable = usableAreaForOutput(o->get()); break; }
+                                if (usable.width==0) {
+                                    for (Output *o : outputs) if (!outputs.isEmpty()) { usable = usableAreaForOutput(outputs.first()->get()); break; }
+                                }
+                                // Determine target state: toggle unless arg forces
+                                bool makeFloating = !layout->isFloating(focused);
+                                if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1") makeFloating = true;
+                                else if (kbnd->arg == "off" || kbnd->arg == "false" || kbnd->arg == "0") makeFloating = false;
+                                // Allow floating in any mode but most useful in tiling; still handle.
+                                auto mode = layout->getWorkspaceLayoutMode(ws);
+                                if (mode == LayoutManager::Mode::Tiling || makeFloating || kbnd->arg == "toggle") {
+                                    bool ok = layout->setFloating(focused, makeFloating, usable);
+                                    if (ok) {
+                                        for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+                                        // Raise floating window to top and refocus
+                                        focusToplevel(focused);
+                                    } else {
+                                        // Fallback to toggle if setFloating failed due to same state (e.g. no workspace)
+                                        if (layout->toggleFloating(focused, usable)) {
+                                            for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+                                            focusToplevel(focused);
+                                        }
+                                    }
+                                } else {
+                                    // In floating/monowindow mode, unfloating means tiling
+                                    bool ok = layout->setFloating(focused, makeFloating, usable);
+                                    if (ok) for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+                                }
+                                wlr_log(WLR_INFO, "toggle_floating: %s ws %d floating=%d", focused->get()->title ? focused->get()->title : "window", ws, layout->isFloating(focused));
+                            }
+                        } else {
+                            wlr_log(WLR_INFO, "toggle_floating: no focused window");
+                        }
+                    } else if (act == "toggle_fullscreen" || act == "fullscreen" || act == "toggle_fullscreened" || act == "set_fullscreen") {
+                        Toplevel *focused = nullptr;
+                        if (seat->keyboard_state.focused_surface) {
+                            struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
+                            if (tl) for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+                        }
+                        if (focused) {
+                            bool isFs = layout->isFullscreen(focused);
+                            bool want = !isFs;
+                            if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1") want = true;
+                            else if (kbnd->arg == "off" || kbnd->arg == "false" || kbnd->arg == "0") want = false;
+                            setFullscreen(focused, want);
+                            wlr_log(WLR_INFO, "toggle_fullscreen: %s fullscreen=%d", focused->get()->title ? focused->get()->title : "window", want);
+                        } else {
+                            wlr_log(WLR_INFO, "toggle_fullscreen: no focused window");
+                        }
+                    } else if (act == "toggle_maximize" || act == "maximize" || act == "toggle_maximized" || act == "set_maximize" || act == "set_maximized") {
+                        Toplevel *focused = nullptr;
+                        if (seat->keyboard_state.focused_surface) {
+                            struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
+                            if (tl) for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+                        }
+                        if (focused) {
+                            bool isMx = layout->isMaximized(focused);
+                            bool want = !isMx;
+                            if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1") want = true;
+                            else if (kbnd->arg == "off" || kbnd->arg == "false" || kbnd->arg == "0") want = false;
+                            // If fullscreen active, refuse maximize
+                            if (want && layout->isFullscreen(focused)) {
+                                wlr_log(WLR_INFO, "toggle_maximize: window is fullscreen, ignoring");
+                            } else {
+                                setMaximized(focused, want);
+                                wlr_log(WLR_INFO, "toggle_maximize: %s maximized=%d", focused->get()->title ? focused->get()->title : "window", want);
+                            }
+                        } else {
+                            wlr_log(WLR_INFO, "toggle_maximize: no focused window");
                         }
                     } else {
                         wlr_log(WLR_INFO, "Unknown keybind action %s", act.c_str());
@@ -668,6 +961,13 @@ Compositor::Compositor(const Astick &app, Config *cfg)
 
     cursorMgrObj = new CursorManager(this);
     layout = new LayoutManager();
+    if (config) {
+        layout->setDefaultSplitRatio(config->bsp.split_ratio);
+        layout->setOppositeOrientation(config->bsp.opposite_orientation);
+        layout->setKeepRatioOnDrop(config->bsp.keep_ratio_on_drop);
+        layout->setMinRatio(config->bsp.min_ratio);
+        layout->setMaxRatio(config->bsp.max_ratio);
+    }
 
     connect(cursorMgrObj, &CursorManager::interactiveEnded, this, [this](Toplevel *toplevel, CursorMode mode) {
         if (mode == CURSOR_MOVE && toplevel == detachedWindow && detachedFromWorkspace > 0) {
@@ -675,42 +975,28 @@ Compositor::Compositor(const Astick &app, Config *cfg)
             if (!out && !outputs.isEmpty()) out = outputs.first();
             if (out) {
                 struct wlr_box usable = usableAreaForOutput(out->get());
-                struct wlr_scene_tree *tree = toplevel->getSceneTree();
-                struct wlr_box *geo = &toplevel->get()->base->geometry;
-                double winW = geo->width > 0 ? geo->width : 800;
-                double winH = geo->height > 0 ? geo->height : 600;
-                double cx = tree->node.x + geo->x + winW / 2.0;
-                double cy = tree->node.y + geo->y + winH / 2.0;
-                int remaining = layout->windowCount(detachedFromWorkspace);
-                int total = remaining + 1;
-                int cols = std::ceil(std::sqrt((double)total));
-                int rows = std::ceil((double)total / cols);
-                int cell_w = cols > 0 ? usable.width / cols : usable.width;
-                int cell_h = rows > 0 ? usable.height / rows : usable.height;
-                if (cell_w <= 0) cell_w = usable.width;
-                if (cell_h <= 0) cell_h = usable.height;
-                int best = 0;
-                double bestDist = 1e18;
-                for (int i = 0; i < total; ++i) {
-                    int col = i % cols;
-                    int row = i / cols;
-                    double tileCx = usable.x + col * cell_w + cell_w / 2.0;
-                    double tileCy = usable.y + row * cell_h + cell_h / 2.0;
-                    double dx = cx - tileCx;
-                    double dy = cy - tileCy;
-                    double dist = dx * dx + dy * dy;
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        best = i;
-                    }
+                double cx = cursor ? cursor->x : usable.x + usable.width/2.0;
+                double cy = cursor ? cursor->y : usable.y + usable.height/2.0;
+                double ratioHint = -1;
+                if (config && config->bsp.keep_ratio_on_drop && detachedRatio > 0) {
+                    ratioHint = detachedRatio;
+                } else if (layout) {
+                    ratioHint = layout->getDefaultSplitRatio();
                 }
-                layout->insertWindowAt(toplevel, detachedFromWorkspace, best);
+                // Use BSP cursor insertion: closest leaf to mouse, preserving ratio
+                layout->insertWindowAtCursor(toplevel, detachedFromWorkspace, usable, cx, cy, ratioHint);
             } else {
                 layout->addWindow(toplevel, detachedFromWorkspace);
             }
             rearrangeTiled();
             detachedWindow = nullptr;
             detachedFromWorkspace = -1;
+            detachedRatio = -1;
+        } else if (mode == CURSOR_RESIZE && toplevel) {
+            // Hyprland-like: ratio already updated during drag via handleResize, just ensure final sync
+            Output *out = outputForToplevel(toplevel);
+            if (!out && !outputs.isEmpty()) out = outputs.first();
+            if (out) arrangeForOutput(out);
         }
     });
 

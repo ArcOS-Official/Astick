@@ -47,6 +47,14 @@ struct MouseConfig {
     double dpi = 0; // 0 = auto
 };
 
+struct BspConfig {
+    double split_ratio = 0.5; // default 50/50
+    bool opposite_orientation = true; // new branch opposite of parent if true
+    bool keep_ratio_on_drop = true; // keep old ratio when reinserting dragged window
+    double min_ratio = 0.1;
+    double max_ratio = 0.9;
+};
+
 struct Keybind {
     std::vector<std::string> mods; // e.g. ["Alt","Ctrl"]
     std::string key;               // e.g. "Escape", "F1", "a"
@@ -85,6 +93,9 @@ public:
     KeyboardConfig keyboard;
     MouseConfig mouse;
 
+    // Layout (BSP)
+    BspConfig bsp;
+
     // Keybinds
     std::vector<Keybind> keybinds;
     const Keybind* findKeybind(uint32_t mods, xkb_keysym_t sym) const;
@@ -111,3 +122,5 @@ void to_json(nlohmann::json &j, const MouseConfig &m);
 void from_json(const nlohmann::json &j, MouseConfig &m);
 void to_json(nlohmann::json &j, const Keybind &k);
 void from_json(const nlohmann::json &j, Keybind &k);
+void to_json(nlohmann::json &j, const BspConfig &b);
+void from_json(const nlohmann::json &j, BspConfig &b);

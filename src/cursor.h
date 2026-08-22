@@ -59,6 +59,7 @@ public:
     void resetMode();
     CursorMode getMode() const { return cursorMode; }
     Toplevel *getGrabbed() const { return grabbedToplevel; }
+    uint32_t getResizeEdges() const { return resizeEdges; }
 
 signals:
     void interactiveEnded(Toplevel *toplevel, CursorMode mode);
