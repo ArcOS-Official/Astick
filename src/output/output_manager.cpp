@@ -9,7 +9,7 @@ OutputManager::OutputManager(State& s) : state_(&s) {
 OutputManager::~OutputManager() = default;
 
 void OutputManager::onOutput(const VariantEvent& ev) {
-    auto* o = std::get_if<OutputEv>(&ev);
+    auto* o = std::get_if<OutputEventent>(&ev);
     if (!o || !o->hasEvent) return;
     OutputInfo info;
     info.serial = o->outputSerial;

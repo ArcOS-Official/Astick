@@ -1,4 +1,5 @@
 #pragma once
+#include "../state/state_interface.h"
 #include "../state/state.h"
 #include "../state/keyboard_state.h"
 #include "../state/pointer_state.h"
@@ -22,7 +23,7 @@ public:
     const struct Keybind* findKeybind(uint32_t mods, uint32_t keysym) const;
 
 private:
-    State* state_ = nullptr;
+    IStateManager* state_ = nullptr;
     std::unique_ptr<KeyboardState> kbState;
     std::unique_ptr<PointerState> ptrState;
     Subscription subKey_; // optional extra keybind dispatch

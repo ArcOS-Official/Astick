@@ -6,13 +6,13 @@
 namespace astick {
 
 // PointerState: holds drag/grab state that was previously in CursorManager.
-// Zero-copy: updates via const Pointer& directly, no wlr_cursor copy.
+// Zero-copy: updates via const PointerEvent& directly, no wlr_cursor copy.
 class PointerState {
 public:
-    explicit PointerState(State& s);
+    explicit PointerState(IStateManager& s);
     ~PointerState();
 
-    void onEvent(const Pointer& e);
+    void onEvent(const PointerEvent& e);
 
     // Drag state — public for LayoutManager to query without copy
     struct Drag {
@@ -30,7 +30,7 @@ public:
     double y() const noexcept { return curY; }
 
 private:
-    State* state_ = nullptr;
+    IStateManager* state_ = nullptr;
     Subscription sub_;
     Drag drag_{};
     double curX = 0, curY = 0;

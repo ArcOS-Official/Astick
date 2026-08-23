@@ -60,6 +60,7 @@ set(SOURCES
     src/input/keyboard.cpp
     src/input/mouse.cpp
     src/state/state.cpp
+    src/state/state_interface.cpp
     src/state/keyboard_state.cpp
     src/state/pointer_state.cpp
     src/state/animation_manager.cpp

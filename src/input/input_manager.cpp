@@ -13,7 +13,7 @@ InputManager::InputManager(State& s) : state_(&s) {
 InputManager::~InputManager() = default;
 
 void InputManager::onKeyboard(const VariantEvent& ev) {
-    auto* k = std::get_if<Keyboard>(&ev);
+    auto* k = std::get_if<KeyEvent>(&ev);
     if (!k || !k->hasEvent || !k->pressed) return;
     // Config lookup would happen here — delegate to Config via Engine or State command
     // Example: auto* bind = findKeybind(k->mods, k->keysym);

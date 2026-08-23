@@ -2,17 +2,17 @@
 
 namespace astick {
 
-KeyboardState::KeyboardState(State& s) : state_(&s) {
+KeyboardState::KeyboardState(IStateManager& s) : state_(&s) {
     // Single subscribe call with mask — one callback, no virtual.
     // Callback captures this by raw ptr (lifetime tied to owner), no shared_ptr copy.
     sub_ = s.subscribe(this, SubMask{uint32_t(EventKind::Keyboard), std::nullopt},
         [this](const VariantEvent& ev){
-            if (auto* k = std::get_if<Keyboard>(&ev)) onEvent(*k);
+            if (auto* k = std::get_if<KeyEvent>(&ev)) onEvent(*k);
         });
 }
 KeyboardState::~KeyboardState() = default;
 
-void KeyboardState::onEvent(const Keyboard& e) {
+void KeyboardState::onEvent(const KeyEvent& e) {
     if (!e.hasEvent) return;
     mods_ = e.mods;
     if (e.pressed) pressed_.insert(e.keycode);

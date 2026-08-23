@@ -103,7 +103,7 @@ public:
     void startCloseAnimation(Toplevel *toplevel);
 
     // State integration
-    void setState(astick::State *s) { state_ = s; }
+    void setState(astick::IEngineState *s) { state_ = s; }
     std::vector<astick::VariantEvent> poll() override;
     std::optional<int> nextWakeupMs() const override { return std::nullopt; }
     void onCommand(const astick::VariantCommand &cmd) override;
@@ -139,7 +139,7 @@ private:
     AnimationPool *animPool = nullptr;
     DecorationManager *decorManager = nullptr;
     Config *config = nullptr;
-    astick::State *state_ = nullptr;
+    astick::IEngineState *state_ = nullptr;
 
     Toplevel *detachedWindow = nullptr;
     int detachedFromWorkspace = -1;

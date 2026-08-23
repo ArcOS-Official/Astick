@@ -3,15 +3,6 @@
 
 namespace astick {
 
-void Subscription::unsubscribe() {
-    if (state && owner) {
-        state->unsubscribeOwner(owner);
-        state = nullptr;
-        owner = nullptr;
-        handles.clear();
-    }
-}
-
 Subscription State::subscribe(void* owner, SubMask mask, Callback cb) {
     // Zero-copy: move cb into storage, no copy of variant.
     Entry e{owner, mask, std::move(cb)};
@@ -38,16 +29,16 @@ void State::unsubscribeOwner(void* owner) {
 
 void State::handle(const VariantEvent& ev) {
     // Update per-window tracking without copying event.
-    if (auto* w = std::get_if<Window>(&ev)) {
+    if (auto* w = std::get_if<WindowEvent>(&ev)) {
         if (w->hasEvent) {
             switch (w->kind) {
-                case Window::Kind::Mapped: winMgr.onMapped(w->id); break;
-                case Window::Kind::Destroy: winMgr.onDestroy(w->id); break;
+                case WindowEvent::Kind::Mapped: winMgr.onMapped(w->id); break;
+                case WindowEvent::Kind::Destroy: winMgr.onDestroy(w->id); break;
                 default: break;
             }
         }
         // Cache stable mapping if needed (no string copy)
-        if (w->hasEvent && (w->kind == Window::Kind::Mapped || w->kind == Window::Kind::Commit)) {
+        if (w->hasEvent && (w->kind == WindowEvent::Kind::Mapped || w->kind == WindowEvent::Kind::Commit)) {
             // stableToLive is lazily filled by Engine via setWindowStable? keep stub
         }
     }

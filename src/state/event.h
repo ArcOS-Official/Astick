@@ -23,7 +23,7 @@ inline Box boxFromWlr(int x,int y,int w,int h) noexcept { return Box{x,y,w,h}; }
 // moves them into VariantEvent via emplace — one move, no heap.
 // State reads const& — no copy on dispatch.
 
-class Keyboard {
+class KeyEvent {
 public:
     uint32_t keycode = 0;
     uint32_t keysym = 0; // xkb_keysym_t
@@ -34,7 +34,7 @@ public:
     void reset() noexcept { keycode=0; keysym=0; mods=0; pressed=false; isRepeat=false; hasEvent=false; }
 };
 
-class Pointer {
+class PointerEvent {
 public:
     enum class Kind { None, Move, Button, Axis, Frame };
     Kind kind = Kind::None;
@@ -47,7 +47,7 @@ public:
     void reset() noexcept { kind=Kind::None; x=y=dx=dy=0; button=0; pressed=false; time=0; axisDelta=0; hasEvent=false; }
 };
 
-class Window {
+class WindowEvent {
 public:
     WindowId id = 0;
     enum class Kind { None, Mapped, Unmapped, Commit, Destroy, RequestMove, RequestResize, RequestMaximize, RequestFullscreen };
@@ -69,7 +69,7 @@ public:
     void reset() noexcept { id=0; t=0; box={0,0,0,0}; opacity=1.0f; hasEvent=false; }
 };
 
-class OutputEv {
+class OutputEventent {
 public:
     uint32_t outputSerial = 0;
     Box usable{0,0,0,0};
@@ -78,7 +78,7 @@ public:
     void reset() noexcept { outputSerial=0; usable=full={0,0,0,0}; hasEvent=false; }
 };
 
-using VariantEvent = std::variant<Keyboard, Pointer, Window, AnimTick, OutputEv>;
+using VariantEvent = std::variant<KeyEvent, PointerEvent, WindowEvent, AnimTick, OutputEventent>;
 
 enum class EventKind : uint32_t {
     Keyboard = 1u<<0,
@@ -115,14 +115,14 @@ inline SubMask operator|(SubMask a, SubMask b) noexcept {
 
 // Zero-copy helpers: get kind + window id without copying variant.
 inline EventKind eventKind(const VariantEvent& ev) noexcept {
-    if (std::holds_alternative<Keyboard>(ev)) return EventKind::Keyboard;
-    if (std::holds_alternative<Pointer>(ev)) return EventKind::Pointer;
-    if (std::holds_alternative<Window>(ev)) return EventKind::Window;
+    if (std::holds_alternative<KeyEvent>(ev)) return EventKind::Keyboard;
+    if (std::holds_alternative<PointerEvent>(ev)) return EventKind::Pointer;
+    if (std::holds_alternative<WindowEvent>(ev)) return EventKind::Window;
     if (std::holds_alternative<AnimTick>(ev)) return EventKind::Anim;
     return EventKind::Output;
 }
 inline std::optional<WindowId> eventWindowId(const VariantEvent& ev) noexcept {
-    if (auto* w = std::get_if<Window>(&ev)) return w->id;
+    if (auto* w = std::get_if<WindowEvent>(&ev)) return w->id;
     return std::nullopt;
 }
 } // namespace astick

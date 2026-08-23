@@ -6,8 +6,8 @@
 
 namespace astick {
 
-// OutputManager: translates OutputEv, handles layer exclusive zone.
-// Zero-copy: receives const OutputEv&, computes usable/full via Box math
+// OutputManager: translates OutputEvent, handles layer exclusive zone.
+// Zero-copy: receives const OutputEventent&, computes usable/full via Box math
 // without allocating, pushes commands only when needed.
 
 struct OutputInfo {
@@ -26,7 +26,7 @@ public:
     size_t count() const noexcept { return outputs.size(); }
 
 private:
-    State* state_ = nullptr;
+    IStateManager* state_ = nullptr;
     Subscription sub_;
     std::unordered_map<uint32_t, OutputInfo> outputs;
 

@@ -45,7 +45,7 @@ struct AnimSpec {
 
 class AnimationManager : public EventSource {
 public:
-    explicit AnimationManager(State& s);
+    explicit AnimationManager(IStateManager& s);
     ~AnimationManager() override = default;
 
     // EventSource: called from Engine::run() each loop, returns ticks by move.
@@ -63,7 +63,7 @@ public:
     int getMaxFps() const noexcept { return maxFps; }
 
 private:
-    State* state_ = nullptr;
+    IStateManager* state_ = nullptr;
     Subscription sub_;
     std::unordered_map<WindowId, AnimSpec> anims_;
     AnimationId nextId_ = 1;
