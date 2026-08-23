@@ -449,6 +449,16 @@ void LayoutManager::addWindow(Toplevel *toplevel, int workspace, Toplevel *focus
     }
     double ratio = std::clamp(defaultSplitRatio, minRatio, maxRatio);
 
+    struct wlr_box leafBox = getBoxForNode(ws->root.get(), leafToSplit, usable);
+    bool placeLeftTop = false;
+    if (newOrient == Orientation::Horizontal) {
+        double centreX = leafBox.x + leafBox.width / 2.0;
+        placeLeftTop = cursorX < centreX;
+    } else {
+        double centreY = leafBox.y + leafBox.height / 2.0;
+        placeLeftTop = cursorY < centreY;
+    }
+
     // Create new leaf for new window
     auto newLeaf = BspNode::makeLeaf(toplevel, nullptr);
     // Need to extract leafToSplit from its owning unique_ptr and replace with branch
@@ -468,11 +478,15 @@ void LayoutManager::addWindow(Toplevel *toplevel, int workspace, Toplevel *focus
             branch->orientation = newOrient;
             branch->ratio = ratio;
             branch->parent = oldLeaf->parent; // grandparent
-            // left = old focused, right = new
             oldLeaf->parent = branch.get();
             newLeaf->parent = branch.get();
-            branch->left = std::move(oldLeaf);
-            branch->right = std::move(newLeaf);
+            if (placeLeftTop) {
+                branch->left = std::move(newLeaf);
+                branch->right = std::move(oldLeaf);
+            } else {
+                branch->left = std::move(oldLeaf);
+                branch->right = std::move(newLeaf);
+            }
             node = std::move(branch);
             return true;
         }
@@ -567,6 +581,16 @@ void LayoutManager::insertWindowAtCursor(Toplevel *toplevel, int workspace, stru
     }
     double ratio = ratioHint > 0 ? std::clamp(ratioHint, minRatio, maxRatio) : std::clamp(defaultSplitRatio, minRatio, maxRatio);
 
+    struct wlr_box leafBox = getBoxForNode(ws->root.get(), leaf, usable);
+    bool placeLeftTop = false;
+    if (newOrient == Orientation::Horizontal) {
+        double centreX = leafBox.x + leafBox.width / 2.0;
+        placeLeftTop = cursorX < centreX;
+    } else {
+        double centreY = leafBox.y + leafBox.height / 2.0;
+        placeLeftTop = cursorY < centreY;
+    }
+
     auto newLeaf = BspNode::makeLeaf(toplevel, nullptr);
     std::function<bool(std::unique_ptr<BspNode>&)> doSplit = [&](std::unique_ptr<BspNode> &node) -> bool {
         if (!node) return false;
@@ -579,8 +603,13 @@ void LayoutManager::insertWindowAtCursor(Toplevel *toplevel, int workspace, stru
             branch->parent = oldLeaf->parent;
             oldLeaf->parent = branch.get();
             newLeaf->parent = branch.get();
-            branch->left = std::move(oldLeaf);
-            branch->right = std::move(newLeaf);
+            if (placeLeftTop) {
+                branch->left = std::move(newLeaf);
+                branch->right = std::move(oldLeaf);
+            } else {
+                branch->left = std::move(oldLeaf);
+                branch->right = std::move(newLeaf);
+            }
             node = std::move(branch);
             return true;
         }
@@ -1137,6 +1166,17 @@ bool LayoutManager::setFloating(Toplevel *toplevel, bool makeFloating, struct wl
             newOrient = (usable.width >= usable.height) ? Orientation::Horizontal : Orientation::Vertical;
         }
         double ratio = std::clamp(defaultSplitRatio, minRatio, maxRatio);
+
+        struct wlr_box targetBox = getBoxForNode(ws->root.get(), target, usable);
+        bool placeLeftTop = false;
+        if (newOrient == Orientation::Horizontal) {
+            double centreX = targetBox.x + targetBox.width / 2.0;
+            placeLeftTop = cx < centreX;
+        } else {
+            double centreY = targetBox.y + targetBox.height / 2.0;
+            placeLeftTop = cy < centreY;
+        }
+
         auto newLeaf = BspNode::makeLeaf(toplevel, nullptr);
         // Split target leaf
         std::function<bool(std::unique_ptr<BspNode>&)> doSplit = [&](std::unique_ptr<BspNode> &node) -> bool {
@@ -1150,8 +1190,13 @@ bool LayoutManager::setFloating(Toplevel *toplevel, bool makeFloating, struct wl
                 branch->parent = oldLeaf->parent;
                 oldLeaf->parent = branch.get();
                 newLeaf->parent = branch.get();
-                branch->left = std::move(oldLeaf);
-                branch->right = std::move(newLeaf);
+                if (placeLeftTop) {
+                    branch->left = std::move(newLeaf);
+                    branch->right = std::move(oldLeaf);
+                } else {
+                    branch->left = std::move(oldLeaf);
+                    branch->right = std::move(newLeaf);
+                }
                 node = std::move(branch);
                 return true;
             }
