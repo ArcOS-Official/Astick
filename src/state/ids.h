@@ -4,6 +4,8 @@
 #include <string_view>
 #include <limits>
 
+namespace astick {
+
 // Zero-copy IDs: only Window & Animation have live IDs.
 // StableKey is a hash of app_id string_view — no string copy.
 using WindowId = uint64_t;
@@ -41,3 +43,4 @@ inline WindowStableKey stableKeyFromAppId(std::string_view appId) noexcept {
 inline WindowStableKey stableKeyFromHash(uint64_t h) noexcept {
     return WindowStableKey{h};
 }
+} // namespace astick

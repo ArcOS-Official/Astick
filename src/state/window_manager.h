@@ -4,6 +4,8 @@
 #include <vector>
 #include "ids.h"
 
+namespace astick {
+
 // Minimal per-WindowId tracking for O(1) dispatch.
 // Zero-copy: keys are uint64_t, values are indices not copies of Window objects.
 class WindowEventManager {
@@ -21,3 +23,4 @@ public:
 private:
     std::unordered_set<WindowId> liveIds;
 };
+} // namespace astick

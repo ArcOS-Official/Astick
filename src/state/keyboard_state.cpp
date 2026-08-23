@@ -1,5 +1,7 @@
 #include "keyboard_state.h"
 
+namespace astick {
+
 KeyboardState::KeyboardState(State& s) : state_(&s) {
     // Single subscribe call with mask — one callback, no virtual.
     // Callback captures this by raw ptr (lifetime tied to owner), no shared_ptr copy.
@@ -17,3 +19,4 @@ void KeyboardState::onEvent(const Keyboard& e) {
     else pressed_.erase(e.keycode);
     // Repeat handling without extra copy: isRepeat flag already set by Engine.
 }
+} // namespace astick

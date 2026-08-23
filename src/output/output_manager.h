@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <cstdint>
 
+namespace astick {
+
 // OutputManager: translates OutputEv, handles layer exclusive zone.
 // Zero-copy: receives const OutputEv&, computes usable/full via Box math
 // without allocating, pushes commands only when needed.
@@ -32,3 +34,4 @@ private:
     // works on Box values only (no wlr_output copy). Takes const& and returns Box.
     static Box applyExclusive(Box full, uint32_t anchor, int32_t zone, Box margin) noexcept;
 };
+} // namespace astick

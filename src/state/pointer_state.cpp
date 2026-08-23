@@ -1,5 +1,7 @@
 #include "pointer_state.h"
 
+namespace astick {
+
 PointerState::PointerState(State& s) : state_(&s) {
     sub_ = s.subscribe(this, SubMask{uint32_t(EventKind::Pointer), std::nullopt},
         [this](const VariantEvent& ev){
@@ -19,3 +21,4 @@ void PointerState::onEvent(const Pointer& e) {
         if (drag_.active) drag_.active = false;
     }
 }
+} // namespace astick

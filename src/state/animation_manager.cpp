@@ -1,9 +1,11 @@
 #include "animation_manager.h"
 #include <chrono>
 
+namespace astick {
+
 AnimationManager::AnimationManager(State& s) : state_(&s) {
     // Subscribe to Window + Output kind — one callback with variant
-    SubMask m = EventKind::Window | EventKind::Output;
+    SubMask m{uint32_t(EventKind::Window) | uint32_t(EventKind::Output), std::nullopt};
     sub_ = s.subscribe(this, m, [this](const VariantEvent& ev){ onWindowOrOutput(ev); });
 }
 
@@ -95,3 +97,4 @@ std::optional<int> AnimationManager::nextWakeupMs() const {
     if (maxFps <= 0) return std::optional<int>{16};
     return std::optional<int>{1000 / maxFps};
 }
+} // namespace astick

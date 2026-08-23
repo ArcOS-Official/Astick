@@ -60,6 +60,14 @@ set(SOURCES
     src/decoration.cpp
     src/input/keyboard.cpp
     src/input/mouse.cpp
+    src/state/state.cpp
+    src/state/keyboard_state.cpp
+    src/state/pointer_state.cpp
+    src/state/animation_manager.cpp
+    src/engine/engine.cpp
+    src/engine/wl_listeners.cpp
+    src/input/input_manager.cpp
+    src/output/output_manager.cpp
 )
 add_executable(Astick
     ${SOURCES}

@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <cstdint>
 
+namespace astick {
+
 // KeyboardState: normal consumer subscribed via State, no wlroots include.
 // Tracks pressed keys/mods without heap copies per event (just ints).
 class KeyboardState {
@@ -24,3 +26,4 @@ private:
     uint32_t mods_ = 0;
     std::unordered_set<uint32_t> pressed_;
 };
+} // namespace astick

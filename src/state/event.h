@@ -4,6 +4,8 @@
 #include <optional>
 #include "ids.h"
 
+namespace astick {
+
 // Lightweight Box — avoids pulling wlroots.h into State domain.
 // Engine converts to/from wlr_box at the boundary with a single copy.
 struct Box {
@@ -123,3 +125,4 @@ inline std::optional<WindowId> eventWindowId(const VariantEvent& ev) noexcept {
     if (auto* w = std::get_if<Window>(&ev)) return w->id;
     return std::nullopt;
 }
+} // namespace astick

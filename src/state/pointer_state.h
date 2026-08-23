@@ -3,6 +3,8 @@
 #include "event.h"
 #include <optional>
 
+namespace astick {
+
 // PointerState: holds drag/grab state that was previously in CursorManager.
 // Zero-copy: updates via const Pointer& directly, no wlr_cursor copy.
 class PointerState {
@@ -33,3 +35,4 @@ private:
     Drag drag_{};
     double curX = 0, curY = 0;
 };
+} // namespace astick

@@ -1,5 +1,7 @@
 #include "output_manager.h"
 
+namespace astick {
+
 OutputManager::OutputManager(State& s) : state_(&s) {
     sub_ = s.subscribe(this, SubMask{uint32_t(EventKind::Output), std::nullopt},
         [this](const VariantEvent& ev){ onOutput(ev); });
@@ -35,3 +37,4 @@ Box OutputManager::applyExclusive(Box full, uint32_t anchor, int32_t zone, Box m
     if (usable.height < 0) usable.height = 0;
     return usable;
 }
+} // namespace astick

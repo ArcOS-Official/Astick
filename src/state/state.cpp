@@ -1,6 +1,8 @@
 #include "state.h"
 #include <algorithm>
 
+namespace astick {
+
 void Subscription::unsubscribe() {
     if (state && owner) {
         state->unsubscribeOwner(owner);
@@ -93,3 +95,4 @@ std::optional<Box> State::WindowHandle::geometry() const {
     (void)id; (void)state;
     return std::nullopt;
 }
+} // namespace astick

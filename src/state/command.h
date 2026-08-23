@@ -5,6 +5,8 @@
 #include "ids.h"
 #include "event.h"
 
+namespace astick {
+
 // Commands: State -> Engine. All by-value, moved not copied.
 // Engine drains with std::move — zero extra copies.
 // Boxes are plain ints, no heap.
@@ -38,3 +40,4 @@ using VariantCommand = std::variant<
 // Zero-copy dispatch: visitor takes const& not by value.
 template<class... Ts> struct Overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
+} // namespace astick

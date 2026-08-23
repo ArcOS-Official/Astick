@@ -9,6 +9,8 @@
 #include "ids.h"
 #include "window_manager.h"
 
+namespace astick {
+
 // Forward deps for zero-copy: State never includes wlroots.
 class EventSource {
 public:
@@ -138,3 +140,4 @@ private:
     // StableKey -> WindowId restore map (best-effort, hash only, no string copy)
     std::unordered_map<uint64_t, WindowId> stableToLive;
 };
+} // namespace astick

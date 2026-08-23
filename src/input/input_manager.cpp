@@ -1,6 +1,8 @@
 #include "input_manager.h"
 #include "../config.h"
 
+namespace astick {
+
 InputManager::InputManager(State& s) : state_(&s) {
     kbState = std::make_unique<KeyboardState>(s);
     ptrState = std::make_unique<PointerState>(s);
@@ -22,3 +24,4 @@ void InputManager::onKeyboard(const VariantEvent& ev) {
 const struct Keybind* InputManager::findKeybind(uint32_t, uint32_t) const {
     return nullptr; // stub until Config is wired
 }
+} // namespace astick

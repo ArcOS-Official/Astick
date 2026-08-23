@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+namespace astick {
+
 // AnimationManager: EventSource + Listener (subscribes to Window/Output).
 // Produces AnimTick events via poll() and pushes SetWindowBox/Opacity commands.
 // Zero-copy: samples existing anims in place, moves AnimTick into vector via emplace.
@@ -70,3 +72,4 @@ private:
 
     static uint64_t nowMs() noexcept;
 };
+} // namespace astick

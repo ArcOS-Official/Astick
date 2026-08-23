@@ -5,6 +5,8 @@
 #include <sys/timerfd.h>
 #include <cstring>
 
+namespace astick {
+
 // C listener shims — thin, zero-copy: just forward data ptr, no allocation.
 void engine_handle_newOutput(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newOutputListener); e->handleNewOutput(d); }
 void engine_handle_newToplevel(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newXdgToplevelListener); e->handleNewToplevel(d); }
@@ -92,19 +94,16 @@ std::vector<VariantEvent> Engine::poll() {
 
 void Engine::onCommand(const VariantCommand& cmd) {
     // Visitor takes const& — no copy of variant. Dispatch without heap.
+    // Zero-copy: each lambda takes const& and covers exactly one variant alternative.
     std::visit(Overloaded{
         [this](const Cmd::SetWindowBox& c){ applySetWindowBox(c); },
         [this](const Cmd::SetWindowActivated& c){ applySetWindowActivated(c); },
         [this](const Cmd::SetWindowOpacity& c){ applySetWindowOpacity(c); },
         [this](const Cmd::RequestFrame& c){ applyRequestFrame(c); },
-        [](const Cmd::SetWindowActivated&){},
         [](const Cmd::CreateSnapshot&){},
         [](const Cmd::DestroySnapshot&){},
         [](const Cmd::SetWorkspace&){},
-        [](const Cmd::ConfigureToplevel&){},
-        [](const Cmd::SetWindowBox&){},
-        [](const Cmd::SetWindowOpacity&){},
-        [](const Cmd::RequestFrame&){}
+        [](const Cmd::ConfigureToplevel&){}
     }, cmd);
 }
 
@@ -158,7 +157,7 @@ int Engine::run() {
         if (libinputFd >= 0) fds[nfds++] = pollfd{libinputFd, POLLIN, 0};
         if (timerFd_ >= 0) fds[nfds++] = pollfd{timerFd_, POLLIN, 0};
 
-        int ret = poll(fds, nfds, timeoutMs);
+        int ret = ::poll(fds, nfds, timeoutMs);
         if (ret < 0 && errno != EINTR) { wlr_log(WLR_ERROR, "Engine poll failed %s", strerror(errno)); break; }
 
         // Dispatch clients if wlFd ready
@@ -236,3 +235,4 @@ void Engine::handleNewPopup(void* ) {}
 void Engine::handleNewLayer(void* ) {}
 void Engine::handleNewInput(void* ) {}
 void Engine::handleRequestSetSelection(void* ) {}
+} // namespace astick

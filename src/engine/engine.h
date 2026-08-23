@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <unordered_map>
 
+namespace astick {
+
 // Engine owns all wlr_* memory and is stale until hookState().
 // Zero-copy: holds live event instances (kb/ptr/win/anim/out) and
 // fills their public fields directly from wl_listeners — no new/delete
@@ -102,3 +104,4 @@ private:
     friend void engine_handle_newInput(wl_listener*, void*);
     friend void engine_handle_setSelection(wl_listener*, void*);
 };
+} // namespace astick
