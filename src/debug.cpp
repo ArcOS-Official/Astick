@@ -18,10 +18,11 @@
 
 #include "debug.h"
 #include "wlroots.h"
-#include <print>
 #include <cstdio>
 #include <vector>
 
+
+Debugger debugger;
 
 Debugger::Debugger()
 {
@@ -30,11 +31,15 @@ Debugger::Debugger()
 
 QString Debugger::lastError()
 {
+    QMutexLocker lock(&mutex);
+    if (errors.isEmpty()) return {};
     return errors.last();
 }
 
 QString Debugger::lastInfo()
 {
+    QMutexLocker lock(&mutex);
+    if (info.isEmpty()) return {};
     return info.last();
 }
 
@@ -54,15 +59,19 @@ void handler(enum wlr_log_importance importance, const char *fmt, va_list args)
         prefix = "ERROR";
     else
         prefix = "INFO";
-    std::println("{}: {}", prefix, log.toStdString());
-    std::fflush(stdout);
+    fprintf(stdout, "%s: %s\n", prefix, log.toUtf8().constData());
+    fflush(stdout);
     switch (importance) {
-        case WLR_ERROR:
+        case WLR_ERROR: {
+            QMutexLocker lock(&debugger.mutex);
             debugger.errors.append(log);
             break;
-        case WLR_INFO:
+        }
+        case WLR_INFO: {
+            QMutexLocker lock(&debugger.mutex);
             debugger.info.append(log);
             break;
+        }
         default:
             break;
     }

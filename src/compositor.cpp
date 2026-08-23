@@ -70,185 +70,410 @@ void handle_newInput(wl_listener *listener, void *data)
     emit self->inputAdded((struct wlr_input_device *)data);
 }
 
+// Compositor helpers — pattern resolve* → build* → commit* → persist* → wire*
+// Anonymous namespace keeps flow in compositor.cpp but decomposed inside .cpp.
+// Helpers take const wlr_box& by ref, return wlr_box by value, no heap (box helpers).
+namespace {
+
+struct ResolvedOutput {
+    QString oid;
+    OutputEntry entry{};
+    bool hasEntry = false;
+    DefaultOutput def{};
+};
+
+inline QString resolveOutputId(struct wlr_output *output) {
+    return Config::outputIdQ(output);
+}
+
+inline ResolvedOutput resolveOutputConfig(Config *config, const QString &oid) {
+    ResolvedOutput ro;
+    ro.oid = oid;
+    if (config) {
+        auto it = config->monitors.find(oid);
+        if (it != config->monitors.end()) {
+            ro.entry = it.value();
+            ro.hasEntry = true;
+        } else {
+            ro.def = config->defaultOutput;
+        }
+        double dpi = config->detectDpi(nullptr);
+        (void)dpi;
+    } else {
+        ro.def = DefaultOutput{};
+    }
+    return ro;
+}
+
+// Overload that needs actual wlr_output for dpi logging
+inline ResolvedOutput resolveOutputConfigForOutput(Config *config, struct wlr_output *output, const QString &oid) {
+    ResolvedOutput ro;
+    ro.oid = oid;
+    if (config) {
+        auto it = config->monitors.find(oid);
+        if (it != config->monitors.end()) {
+            ro.entry = it.value();
+            ro.hasEntry = true;
+            wlr_log(WLR_INFO, "Output %s matched config %dx%d@%.2f scale %.2f", oid.toUtf8().constData(), ro.entry.width, ro.entry.height, ro.entry.refresh, ro.entry.scale);
+        } else {
+            ro.def = config->defaultOutput;
+            wlr_log(WLR_INFO, "Output %s not in config, using default/recommended (default %dx%d@%.2f)", oid.toUtf8().constData(), ro.def.width, ro.def.height, ro.def.refresh);
+        }
+        double dpi = config->detectDpi(output);
+        wlr_log(WLR_INFO, "Output %s DPI detected: %.1f (phys %dx%d mm, mode %dx%d)", oid.toUtf8().constData(), dpi, output ? output->phys_width : 0, output ? output->phys_height : 0, output ? output->width : 0, output ? output->height : 0);
+    } else {
+        ro.def = DefaultOutput{};
+    }
+    return ro;
+}
+
+inline double resolveScale(Config *config, struct wlr_output *output, const ResolvedOutput &ro) {
+    double desiredScale = 1.0;
+    if (!config) return desiredScale;
+    OutputEntry scaleProbe = ro.hasEntry ? ro.entry : OutputEntry{};
+    if (!ro.hasEntry) {
+        scaleProbe.width = ro.def.width;
+        scaleProbe.height = ro.def.height;
+        scaleProbe.refresh = ro.def.refresh;
+        scaleProbe.scale = ro.def.scale;
+    }
+    desiredScale = config->getOutputScale(output, scaleProbe);
+    if (desiredScale < 0.5) desiredScale = 1.0;
+    wlr_log(WLR_INFO, "Output %s: scale %.2f", ro.oid.toUtf8().constData(), desiredScale);
+    return desiredScale;
+}
+
+inline void buildOutputState(struct wlr_output_state *state, struct wlr_output *output,
+                             const ResolvedOutput &ro, double scale, struct wlr_output_mode *preferred) {
+    wlr_output_state_init(state);
+    wlr_output_state_set_enabled(state, true);
+    if (scale >= 0.5) {
+        wlr_output_state_set_scale(state, (float)scale);
+    }
+    if (ro.hasEntry && ro.entry.width > 0 && ro.entry.height > 0) {
+        int refresh_mhz = ro.entry.refresh > 0 ? (int)(ro.entry.refresh * 1000) : 0;
+        if (refresh_mhz == 0 && preferred) refresh_mhz = preferred->refresh;
+        if (refresh_mhz == 0) refresh_mhz = (int)(ro.def.refresh * 1000);
+        wlr_output_state_set_custom_mode(state, ro.entry.width, ro.entry.height, refresh_mhz);
+        wlr_log(WLR_INFO, "Output %s: trying config mode %dx%d@%d mHz", ro.oid.toUtf8().constData(), ro.entry.width, ro.entry.height, refresh_mhz);
+    } else if (preferred) {
+        wlr_output_state_set_mode(state, preferred);
+        wlr_log(WLR_INFO, "Output %s: using preferred mode %dx%d@%d", ro.oid.toUtf8().constData(), preferred->width, preferred->height, preferred->refresh);
+    } else {
+        int w = ro.hasEntry && ro.entry.width > 0 ? ro.entry.width : ro.def.width;
+        int h = ro.hasEntry && ro.entry.height > 0 ? ro.entry.height : ro.def.height;
+        double ref = ro.hasEntry && ro.entry.refresh > 0 ? ro.entry.refresh : ro.def.refresh;
+        int refresh_mhz = (int)(ref * 1000);
+        if (w <= 0) w = output && output->width ? output->width : 1280;
+        if (h <= 0) h = output && output->height ? output->height : 720;
+        wlr_output_state_set_custom_mode(state, w, h, refresh_mhz);
+        wlr_log(WLR_INFO, "Output %s: using fallback custom mode %dx%d@%d", ro.oid.toUtf8().constData(), w, h, refresh_mhz);
+    }
+}
+
+inline bool commitOutputStateWithFallback(struct wlr_output *output, struct wlr_output_state *state,
+                                          const ResolvedOutput &ro, struct wlr_output_mode *preferred) {
+    bool committed = wlr_output_commit_state(output, state);
+    if (!committed) {
+        wlr_log(WLR_INFO, "Output %s: state commit failed, retrying without custom mode/scale", ro.oid.toUtf8().constData());
+        wlr_output_state_finish(state);
+        wlr_output_state_init(state);
+        wlr_output_state_set_enabled(state, true);
+        if (preferred) {
+            wlr_output_state_set_mode(state, preferred);
+            wlr_log(WLR_INFO, "Output %s: retry with preferred mode", ro.oid.toUtf8().constData());
+        }
+        committed = wlr_output_commit_state(output, state);
+        if (!committed) {
+            wlr_log(WLR_INFO, "Output %s: retry without mode, just enable", ro.oid.toUtf8().constData());
+            wlr_output_state_finish(state);
+            wlr_output_state_init(state);
+            wlr_output_state_set_enabled(state, true);
+            committed = wlr_output_commit_state(output, state);
+            // caller will finish; if still not committed we still return
+            if (committed) wlr_log(WLR_INFO, "Output %s: committed on fallback enable", ro.oid.toUtf8().constData());
+        } else {
+            wlr_log(WLR_INFO, "Output %s: committed on retry preferred", ro.oid.toUtf8().constData());
+        }
+    } else {
+        wlr_log(WLR_INFO, "Output %s: committed state %dx%d scale %.2f", ro.oid.toUtf8().constData(), output->width, output->height, output->scale);
+    }
+    return committed;
+}
+
+inline void persistNewOutput(Config *config, const QString &oid, struct wlr_output *output, double scale, const DefaultOutput &def) {
+    if (!config) return;
+    OutputEntry newEntry;
+    newEntry.width = output->width;
+    newEntry.height = output->height;
+    newEntry.refresh = output->refresh ? output->refresh / 1000.0 : def.refresh;
+    newEntry.scale = scale;
+    newEntry.enabled = true;
+    config->monitors[oid] = newEntry;
+    config->save();
+    wlr_log(WLR_INFO, "Output %s: saved new entry to config", oid.toUtf8().constData());
+}
+
+inline Output* createAndWireOutput(Compositor *self, struct wlr_output *wlrOut,
+                                   struct wlr_renderer *renderer, struct wlr_allocator *allocator,
+                                   struct wlr_scene *scene, AnimationPool *animPool,
+                                   QList<Output*> &outputs) {
+    Output *out = new Output(wlrOut, renderer, allocator, scene);
+    outputs.append(out);
+    if (animPool) {
+        QObject::connect(out, &Output::frameReady, animPool, &AnimationPool::onFrame);
+    }
+    Q_UNUSED(self);
+    return out;
+}
+
+inline void updateAnimationMaxFps(AnimationManager *animManager, const QList<Output*> &outputs) {
+    if (!animManager) return;
+    int maxFps = 60;
+    for (Output *o : outputs) {
+        int fps = 0;
+        if (o->get()->refresh) fps = (int)(o->get()->refresh / 1000.0 + 0.5);
+        else if (o->get()->current_mode) fps = o->get()->current_mode->refresh / 1000;
+        if (fps > maxFps) maxFps = fps;
+    }
+    animManager->setMaxFps(maxFps);
+    wlr_log(WLR_INFO, "Animation max FPS updated to %d (outputs %zu)", maxFps, outputs.size());
+}
+
+// --- arrangeForOutput helpers ---
+inline struct wlr_box resolveUsableAreaForOutput(struct wlr_output *wlrOut, struct wlr_output_layout *layout,
+                                                 const QList<LayerSurface*> &layers) {
+    struct wlr_box full{0,0,0,0};
+    if (layout && wlrOut) {
+        wlr_output_layout_get_box(layout, wlrOut, &full);
+        if (full.width == 0 && full.height == 0) full = {0,0,wlrOut->width, wlrOut->height};
+    } else if (wlrOut) {
+        full = {0,0,wlrOut->width, wlrOut->height};
+    }
+    struct wlr_box usable = full;
+    for (LayerSurface *ls : layers) {
+        struct wlr_layer_surface_v1 *l = ls->get();
+        if (l->output != wlrOut) continue;
+        if (!l->surface->mapped) continue;
+        struct wlr_layer_surface_v1_state *state = &l->current;
+        if (state->exclusive_zone <= 0) continue;
+        uint32_t anchor = state->anchor;
+        if (state->exclusive_edge != 0) anchor = state->exclusive_edge;
+        bool handled = false;
+        switch (anchor) {
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+            usable.y += state->exclusive_zone + state->margin.top;
+            usable.height -= state->exclusive_zone + state->margin.top;
+            handled = true; break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM|ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+            usable.height -= state->exclusive_zone + state->margin.bottom;
+            handled = true; break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM|ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT):
+            usable.x += state->exclusive_zone + state->margin.left;
+            usable.width -= state->exclusive_zone + state->margin.left;
+            handled = true; break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
+        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+            usable.width -= state->exclusive_zone + state->margin.right;
+            handled = true; break;
+        default: break;
+        }
+        if (!handled) {
+            if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) { usable.y += state->exclusive_zone + state->margin.top; usable.height -= state->exclusive_zone + state->margin.top; }
+            else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) { usable.height -= state->exclusive_zone + state->margin.bottom; }
+            if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) { usable.x += state->exclusive_zone + state->margin.left; usable.width -= state->exclusive_zone + state->margin.left; }
+            else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) { usable.width -= state->exclusive_zone + state->margin.right; }
+        }
+        if (usable.width < 0) usable.width = 0;
+        if (usable.height < 0) usable.height = 0;
+    }
+    return usable;
+}
+
+inline struct wlr_box applyOuterGap(const struct wlr_box &usable, int outerGap) {
+    if (outerGap <= 0) return usable;
+    struct wlr_box out = usable;
+    out.x += outerGap;
+    out.y += outerGap;
+    out.width -= 2 * outerGap;
+    out.height -= 2 * outerGap;
+    if (out.width < 0) out.width = 0;
+    if (out.height < 0) out.height = 0;
+    return out;
+}
+
+inline struct wlr_box resolveUsableAreaWithGap(struct wlr_output *wlrOut, struct wlr_output_layout *layout,
+                                               const QList<LayerSurface*> &layers, int outerGap) {
+    struct wlr_box u = resolveUsableAreaForOutput(wlrOut, layout, layers);
+    return applyOuterGap(u, outerGap);
+}
+
+inline std::unordered_map<Toplevel*, struct wlr_box> snapshotGeometriesForTiling(Compositor *self, Output *out) {
+    Q_UNUSED(self);
+    Q_UNUSED(out);
+    // dummy to avoid unused warnings when not used; real snapshots are in Compositor methods
+    return {};
+}
+
+} // anonymous namespace
+
+#ifdef ASTICK_ENABLE_TESTS
+// Expose helpers for tests via detail namespace (thin wrappers over anonymous helpers)
+#include "detail/compositor_helpers.h"
+namespace astick::detail {
+QString resolveOutputId(struct wlr_output *output) { return ::resolveOutputId(output); }
+ResolvedOutput resolveOutputConfig(Config *config, const QString &oid) {
+    auto tmp = ::resolveOutputConfig(config, oid);
+    ResolvedOutput out;
+    out.oid = tmp.oid;
+    out.entry = tmp.entry;
+    out.hasEntry = tmp.hasEntry;
+    out.def = tmp.def;
+    return out;
+}
+double resolveScale(Config *config, struct wlr_output *output, const ResolvedOutput &ro) {
+    ::ResolvedOutput tmp;
+    tmp.oid = ro.oid; tmp.entry = ro.entry; tmp.hasEntry = ro.hasEntry; tmp.def = ro.def;
+    return ::resolveScale(config, output, tmp);
+}
+void buildOutputState(struct wlr_output_state *state, struct wlr_output *output, const ResolvedOutput &ro, double scale) {
+    struct wlr_output_mode *pref = wlr_output_preferred_mode(output);
+    ::ResolvedOutput tmp; tmp.oid=ro.oid; tmp.entry=ro.entry; tmp.hasEntry=ro.hasEntry; tmp.def=ro.def;
+    ::buildOutputState(state, output, tmp, scale, pref);
+}
+bool commitOutputStateWithFallback(struct wlr_output *output, struct wlr_output_state *state, const ResolvedOutput &ro) {
+    struct wlr_output_mode *pref = wlr_output_preferred_mode(output);
+    ::ResolvedOutput tmp; tmp.oid=ro.oid; tmp.entry=ro.entry; tmp.hasEntry=ro.hasEntry; tmp.def=ro.def;
+    return ::commitOutputStateWithFallback(output, state, tmp, pref);
+}
+void persistNewOutput(Config *config, const QString &oid, struct wlr_output *output, double scale, const DefaultOutput &def) { ::persistNewOutput(config, oid, output, scale, def); }
+int resolveAnimationMaxFps(const QList<struct wlr_output*> &outputs) {
+    int maxFps = 60;
+    for (auto *o : outputs) {
+        int fps = 0;
+        if (o && o->refresh) fps = (int)(o->refresh / 1000.0 + 0.5);
+        else if (o && o->current_mode) fps = o->current_mode->refresh / 1000;
+        if (fps > maxFps) maxFps = fps;
+    }
+    return maxFps;
+}
+struct wlr_box resolveUsableArea(struct wlr_output *output, struct wlr_output_layout *layout) {
+    // empty layers fallback for test
+    QList<LayerSurface*> empty;
+    return ::resolveUsableAreaForOutput(output, layout, empty);
+}
+struct wlr_box applyOuterGap(const struct wlr_box &usable, int outerGap) { return ::applyOuterGap(usable, outerGap); }
+struct wlr_box resolveUsableAreaWithGap(struct wlr_output *output, struct wlr_output_layout *layout, int outerGap) {
+    QList<LayerSurface*> empty;
+    return ::resolveUsableAreaWithGap(output, layout, empty, outerGap);
+}
+BoxPair splitBoxHorizontally(const struct wlr_box &box, double ratio) {
+    int lw = (int)(box.width * std::clamp(ratio, 0.0, 1.0));
+    int rw = box.width - lw;
+    struct wlr_box l{box.x, box.y, lw, box.height};
+    struct wlr_box r{box.x + lw, box.y, rw, box.height};
+    return {l, r};
+}
+BoxPair splitBoxVertically(const struct wlr_box &box, double ratio) {
+    int th = (int)(box.height * std::clamp(ratio, 0.0, 1.0));
+    int bh = box.height - th;
+    struct wlr_box t{box.x, box.y, box.width, th};
+    struct wlr_box b{box.x, box.y + th, box.width, bh};
+    return {t, b};
+}
+double distanceSquaredToBoxCenter(const struct wlr_box &box, double cx, double cy) {
+    double bx = box.x + box.width / 2.0;
+    double by = box.y + box.height / 2.0;
+    double dx = cx - bx;
+    double dy = cy - by;
+    return dx*dx + dy*dy;
+}
+struct wlr_box boxClosestToPoint(const struct wlr_box &a, const struct wlr_box &b, double cx, double cy) {
+    double da = distanceSquaredToBoxCenter(a, cx, cy);
+    double db = distanceSquaredToBoxCenter(b, cx, cy);
+    return da < db ? a : b;
+}
+int indexClosestToPoint(const struct wlr_box *boxes, int count, double cx, double cy) {
+    if (!boxes || count <= 0) return -1;
+    int best = 0;
+    double bestD = distanceSquaredToBoxCenter(boxes[0], cx, cy);
+    for (int i=1;i<count;i++) {
+        double d = distanceSquaredToBoxCenter(boxes[i], cx, cy);
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+} // namespace astick::detail
+#endif
+
 // Compositor private slots
 
 void Compositor::onOutputAdded(struct wlr_output *output)
 {
+    // Thin orchestrator: resolve → build → commit → persist → wire
     wlr_output_init_render(output, allocator, renderer);
-
-    std::string oid = Config::outputId(output);
-    OutputEntry entry{};
-    bool hasEntry = false;
-    DefaultOutput def{};
-    if (config) {
-        auto it = config->monitors.find(oid);
-        if (it != config->monitors.end()) {
-            entry = it->second;
-            hasEntry = true;
-            wlr_log(WLR_INFO, "Output %s matched config %dx%d@%.2f scale %.2f", oid.c_str(), entry.width, entry.height, entry.refresh, entry.scale);
-        } else {
-            def = config->defaultOutput;
-            wlr_log(WLR_INFO, "Output %s not in config, using default/recommended (default %dx%d@%.2f)", oid.c_str(), def.width, def.height, def.refresh);
-        }
-        double dpi = config->detectDpi(output);
-        wlr_log(WLR_INFO, "Output %s DPI detected: %.1f (phys %dx%d mm, mode %dx%d)", oid.c_str(), dpi, output->phys_width, output->phys_height, output->width, output->height);
-    } else {
-        def = DefaultOutput{};
-    }
-
-    // Build single state with mode + scale and try to commit once
-    struct wlr_output_state state;
-    wlr_output_state_init(&state);
-    wlr_output_state_set_enabled(&state, true);
-
+    QString oid = resolveOutputId(output);
+    ResolvedOutput ro = resolveOutputConfigForOutput(config, output, oid);
+    double desiredScale = resolveScale(config, output, ro);
+    struct wlr_output_state state{};
     struct wlr_output_mode *preferred = wlr_output_preferred_mode(output);
-    double desiredScale = 1.0;
-    if (config) {
-        // Determine scale via DPI detector / config
-        OutputEntry scaleProbe = hasEntry ? entry : OutputEntry{};
-        if (!hasEntry) {
-            scaleProbe.width = def.width;
-            scaleProbe.height = def.height;
-            scaleProbe.refresh = def.refresh;
-            scaleProbe.scale = def.scale;
-        }
-        desiredScale = config->getOutputScale(output, scaleProbe);
-        if (desiredScale < 0.5) desiredScale = 1.0;
-        wlr_log(WLR_INFO, "Output %s: scale %.2f", oid.c_str(), desiredScale);
-        wlr_output_state_set_scale(&state, (float)desiredScale);
-    }
-
-    // Try config mode first if present
-    if (hasEntry && entry.width > 0 && entry.height > 0) {
-        int refresh_mhz = entry.refresh > 0 ? (int)(entry.refresh * 1000) : 0;
-        if (refresh_mhz == 0 && preferred) refresh_mhz = preferred->refresh;
-        if (refresh_mhz == 0) refresh_mhz = (int)(def.refresh * 1000);
-        wlr_output_state_set_custom_mode(&state, entry.width, entry.height, refresh_mhz);
-        wlr_log(WLR_INFO, "Output %s: trying config mode %dx%d@%d mHz", oid.c_str(), entry.width, entry.height, refresh_mhz);
-    } else if (preferred) {
-        wlr_output_state_set_mode(&state, preferred);
-        wlr_log(WLR_INFO, "Output %s: using preferred mode %dx%d@%d", oid.c_str(), preferred->width, preferred->height, preferred->refresh);
-    } else {
-        int w = hasEntry && entry.width > 0 ? entry.width : def.width;
-        int h = hasEntry && entry.height > 0 ? entry.height : def.height;
-        double ref = hasEntry && entry.refresh > 0 ? entry.refresh : def.refresh;
-        int refresh_mhz = (int)(ref * 1000);
-        if (w <= 0) w = output->width ? output->width : 1280;
-        if (h <= 0) h = output->height ? output->height : 720;
-        wlr_output_state_set_custom_mode(&state, w, h, refresh_mhz);
-        wlr_log(WLR_INFO, "Output %s: using fallback custom mode %dx%d@%d", oid.c_str(), w, h, refresh_mhz);
-    }
-
-    bool committed = wlr_output_commit_state(output, &state);
-    if (!committed) {
-        wlr_log(WLR_INFO, "Output %s: state commit failed, retrying without custom mode/scale", oid.c_str());
-        wlr_output_state_finish(&state);
-        wlr_output_state_init(&state);
-        wlr_output_state_set_enabled(&state, true);
-        if (preferred) {
-            wlr_output_state_set_mode(&state, preferred);
-            wlr_log(WLR_INFO, "Output %s: retry with preferred mode", oid.c_str());
-        }
-        // try without scale if scale was the issue
-        committed = wlr_output_commit_state(output, &state);
-        if (!committed) {
-            wlr_log(WLR_INFO, "Output %s: retry without mode, just enable", oid.c_str());
-            wlr_output_state_finish(&state);
-            wlr_output_state_init(&state);
-            wlr_output_state_set_enabled(&state, true);
-            wlr_output_commit_state(output, &state);
-        }
-    } else {
-        wlr_log(WLR_INFO, "Output %s: committed state %dx%d scale %.2f", oid.c_str(), output->width, output->height, desiredScale);
-    }
+    buildOutputState(&state, output, ro, desiredScale, preferred);
+    (void)commitOutputStateWithFallback(output, &state, ro, preferred);
     wlr_output_state_finish(&state);
-
-    // Persist new output if not in config
-    if (config && !hasEntry) {
-        OutputEntry newEntry;
-        newEntry.width = output->width;
-        newEntry.height = output->height;
-        newEntry.refresh = output->refresh ? output->refresh / 1000.0 : def.refresh;
-        newEntry.scale = desiredScale;
-        newEntry.enabled = true;
-        config->monitors[oid] = newEntry;
-        config->save();
-        wlr_log(WLR_INFO, "Output %s: saved new entry to config", oid.c_str());
-    }
-
-    Output *out = new Output(output, renderer, allocator, scene);
-    outputs.append(out);
-    // Drive new AnimationPool via output frame (vsync)
-    if (animPool) {
-        connect(out, &Output::frameReady, animPool, &AnimationPool::onFrame);
-    }
-
+    if (!ro.hasEntry) persistNewOutput(config, oid, output, desiredScale, ro.def);
+    Output *out = createAndWireOutput(this, output, renderer, allocator, scene, animPool, outputs);
+    // wire workspace switch
     connect(out, &Output::workspaceChanged, this, [this, out](int oldWs, int newWs) {
-        struct wlr_box usable = usableAreaForOutput(out->get());
-        if (decorManager) {
-            int outer = decorManager->config().outerGap;
-            if (outer>0) { usable.x+=outer; usable.y+=outer; usable.width-=2*outer; usable.height-=2*outer; if(usable.width<0) usable.width=0; if(usable.height<0) usable.height=0; }
-        }
-        // Workspace switch animation: window-layer-only by default, uses slide/cube/fade variants
+        struct wlr_box usable = resolveUsableAreaForOutput(out->get(), outputLayout, layers);
+        if (decorManager) usable = applyOuterGap(usable, decorManager->config().outerGap);
         bool shouldAnim = config && config->animations.enabled && config->animations.pairs.find("workspaceSwitch") != config->animations.pairs.end();
-        if (shouldAnim) {
-            // Capture before, then animate; layout activate will be done inside animate
-            animateWorkspaceSwitch(out, oldWs, newWs, usable);
-            // After animation, activation is handled inside animate; but ensure arrange after short delay
-            // Fallback immediate arrange if anim disabled
-        } else {
-            layout->deactivateWorkspace(oldWs);
-            layout->activateWorkspace(newWs);
-            arrangeForOutput(out);
-        }
+        if (shouldAnim) animateWorkspaceSwitch(out, oldWs, newWs, usable);
+        else { layout->deactivateWorkspace(oldWs); layout->activateWorkspace(newWs); arrangeForOutput(out); }
     });
-
     layout->activateWorkspace(out->getWorkspace());
     rearrangeTiled();
-
+    // wire output layout position
     struct wlr_output_layout_output *lout = nullptr;
     if (config) {
         auto it = config->monitors.find(oid);
-        if (it != config->monitors.end() && it->second.x != INT_MIN && it->second.y != INT_MIN) {
-            lout = wlr_output_layout_add(outputLayout, output, it->second.x, it->second.y);
-            wlr_log(WLR_INFO, "Output %s: placed at %d,%d from config", oid.c_str(), it->second.x, it->second.y);
-        } else {
-            lout = wlr_output_layout_add_auto(outputLayout, output);
-        }
-    } else {
-        lout = wlr_output_layout_add_auto(outputLayout, output);
-    }
+        if (it != config->monitors.end() && it.value().x != INT_MIN && it.value().y != INT_MIN) {
+            lout = wlr_output_layout_add(outputLayout, output, it.value().x, it.value().y);
+            wlr_log(WLR_INFO, "Output %s: placed at %d,%d from config", oid.toUtf8().constData(), it.value().x, it.value().y);
+        } else lout = wlr_output_layout_add_auto(outputLayout, output);
+    } else lout = wlr_output_layout_add_auto(outputLayout, output);
     struct wlr_scene_output *rout = wlr_scene_output_create(scene, output);
     wlr_scene_output_layout_add_output(sceneLayout, lout, rout);
-
-    // Update global max FPS for animations (highest output refresh)
-    if (animManager) {
-        int maxFps = 60;
-        for (Output *o : outputs) {
-            int fps = 0;
-            if (o->get()->refresh) fps = (int)(o->get()->refresh / 1000.0 + 0.5);
-            else if (o->get()->current_mode) fps = o->get()->current_mode->refresh / 1000;
-            if (fps > maxFps) maxFps = fps;
-        }
-        // also consider the new output itself if not yet in list? already added
-        animManager->setMaxFps(maxFps);
-        wlr_log(WLR_INFO, "Animation max FPS updated to %d (outputs %zu)", maxFps, outputs.size());
-    }
+    updateAnimationMaxFps(animManager, outputs);
 }
+
+namespace {
+// toplevel helpers — resolve → build → commit → persist → wire
+inline struct wlr_scene_tree* createSceneTreeBelowPopup(struct wlr_scene *scene, struct wlr_xdg_toplevel *xt,
+                                                        struct wlr_scene_tree *popupTree,
+                                                        struct wlr_scene_tree *layerTop) {
+    struct wlr_scene_tree *tree = wlr_scene_xdg_surface_create(&scene->tree, xt->base);
+    if (popupTree) wlr_scene_node_place_below(&tree->node, &popupTree->node);
+    else if (layerTop) wlr_scene_node_place_below(&tree->node, &layerTop->node);
+    return tree;
+}
+inline Toplevel* createToplevelResource(Compositor *self, struct wlr_xdg_toplevel *xt, struct wlr_scene_tree *tree,
+                                        QList<Toplevel*> &toplevels, DecorationManager *decorMgr) {
+    Toplevel *tl = new Toplevel(self, xt, tree);
+    wlr_log(WLR_INFO, "  created Toplevel %p id %lu", (void*)tl, (unsigned long)tl->id);
+    toplevels.append(tl);
+    if (decorMgr) decorMgr->createFor(tl);
+    return tl;
+}
+} // anonymous
 
 void Compositor::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
 {
     wlr_log(WLR_INFO, "onToplevelAdded: xdg_toplevel %p title %s", (void*)xtoplevel, xtoplevel->title ? xtoplevel->title : "(null)");
-    struct wlr_scene_tree *tree = wlr_scene_xdg_surface_create(
-        &scene->tree, xtoplevel->base
-    );
-    if (popupTree) {
-        wlr_scene_node_place_below(&tree->node, &popupTree->node);
-    } else {
-        wlr_scene_node_place_below(&tree->node,
-            &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
-    }
-    Toplevel *toplevel = new Toplevel(this, xtoplevel, tree);
+    struct wlr_scene_tree *tree = createSceneTreeBelowPopup(scene, xtoplevel, popupTree, layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]);
+    Toplevel *toplevel = createToplevelResource(this, xtoplevel, tree, toplevels, decorManager);
     wlr_log(WLR_INFO, "  created Toplevel %p id %lu", (void*)toplevel, (unsigned long)toplevel->id);
     toplevels.append(toplevel);
     if (decorManager) decorManager->createFor(toplevel);
@@ -772,87 +997,7 @@ void Compositor::setInitialLayoutMode(const QString &mode)
 
 struct wlr_box Compositor::usableAreaForOutput(struct wlr_output *wlr_output)
 {
-    struct wlr_box full = {0, 0, 0, 0};
-    if (outputLayout && wlr_output) {
-        wlr_output_layout_get_box(outputLayout, wlr_output, &full);
-        if (full.width == 0 && full.height == 0) {
-            full = {0, 0, wlr_output->width, wlr_output->height};
-        }
-    } else if (wlr_output) {
-        full = {0, 0, wlr_output->width, wlr_output->height};
-    }
-    struct wlr_box usable = full;
-    for (LayerSurface *ls : layers) {
-        struct wlr_layer_surface_v1 *l = ls->get();
-        if (l->output != wlr_output) continue;
-        if (!l->surface->mapped) continue;
-        struct wlr_layer_surface_v1_state *state = &l->current;
-        if (state->exclusive_zone <= 0) continue;
-
-        // Prefer exclusive_edge if set, otherwise infer from anchor
-        uint32_t anchor = state->anchor;
-        if (state->exclusive_edge != 0) {
-            anchor = state->exclusive_edge;
-        }
-
-        // Apply the same logic as wlr_scene_layer_surface_v1 exclusive handling
-        // plus margin. The scene helper handles 4 specific anchor combos; handle
-        // both those and a generic per-edge fallback.
-        bool handled = false;
-        switch (anchor) {
-        case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
-        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
-            usable.y += state->exclusive_zone + state->margin.top;
-            usable.height -= state->exclusive_zone + state->margin.top;
-            handled = true;
-            break;
-        case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
-        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
-            usable.height -= state->exclusive_zone + state->margin.bottom;
-            handled = true;
-            break;
-        case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
-        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT):
-            usable.x += state->exclusive_zone + state->margin.left;
-            usable.width -= state->exclusive_zone + state->margin.left;
-            handled = true;
-            break;
-        case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
-        case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-              ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
-            usable.width -= state->exclusive_zone + state->margin.right;
-            handled = true;
-            break;
-        default:
-            break;
-        }
-        if (!handled) {
-            // Generic fallback: treat each anchored edge with an exclusive
-            // zone. This covers custom exclusive_edge values or unusual anchors.
-            if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) {
-                usable.y += state->exclusive_zone + state->margin.top;
-                usable.height -= state->exclusive_zone + state->margin.top;
-            } else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) {
-                usable.height -= state->exclusive_zone + state->margin.bottom;
-            }
-            if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) {
-                usable.x += state->exclusive_zone + state->margin.left;
-                usable.width -= state->exclusive_zone + state->margin.left;
-            } else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) {
-                usable.width -= state->exclusive_zone + state->margin.right;
-            }
-        }
-        if (usable.width < 0) usable.width = 0;
-        if (usable.height < 0) usable.height = 0;
-    }
-    return usable;
+    return resolveUsableAreaForOutput(wlr_output, outputLayout, layers);
 }
 
 struct wlr_box Compositor::fullAreaForOutput(struct wlr_output *wlr_output)
@@ -869,105 +1014,102 @@ struct wlr_box Compositor::fullAreaForOutput(struct wlr_output *wlr_output)
     return full;
 }
 
-void Compositor::arrangeForOutput(Output *out)
-{
-    if (!out) return;
-    struct wlr_box usable = usableAreaForOutput(out->get());
-    // Apply decoration gaps to usable area (outer_gap shrinks, inner handled by layout spacing if configured)
-    if (decorManager) {
-        int outer = decorManager->config().outerGap;
-        if (outer > 0) { usable.x += outer; usable.y += outer; usable.width -= 2*outer; usable.height -= 2*outer; if (usable.width<0) usable.width=0; if (usable.height<0) usable.height=0; }
-    }
-    struct wlr_box full = fullAreaForOutput(out->get());
-    // Snapshot before for tilingMove animation (generic lerp with window-layer-only)
-    std::unordered_map<Toplevel*, struct wlr_box> beforeBoxes;
-    bool doTilingAnim = config && config->animations.enabled && layout->getWorkspaceLayoutMode(out->getWorkspace())==LayoutManager::Mode::Tiling;
+namespace {
+// arrangeForOutput helpers — resolve → build → commit → persist → wire
+inline struct wlr_box resolveUsableAreaHelper(Compositor *self, Output *out) {
+    // delegates to usableAreaForOutput but keeps helper testable
+    return self->usableAreaForOutput(out->get());
+}
+inline struct wlr_box applyOuterGapHelper(const struct wlr_box &usable, int outerGap) {
+    return applyOuterGap(usable, outerGap);
+}
+inline std::unordered_map<Toplevel*, struct wlr_box> snapshotGeometriesHelper(Compositor *self, Output *out, bool doAnim) {
+    std::unordered_map<Toplevel*, struct wlr_box> m;
+    if (!doAnim || !self || !out) return m;
     int ws = out->getWorkspace();
-    if (doTilingAnim) {
-        // Capture current scene positions as animation start points
-        for (Toplevel *tl : toplevels) {
-            if (layout->getWindowWorkspace(tl) != ws) continue;
-            struct wlr_box b;
-            b.x = tl->getSceneTree()->node.x;
-            b.y = tl->getSceneTree()->node.y;
-            // Use current surface size as starting size
-            struct wlr_surface *surf = tl->get()->base->surface;
-            if (surf) {
-                b.width = surf->current.width;
-                b.height = surf->current.height;
-            } else {
-                struct wlr_box geo = tl->get()->base->geometry;
-                b.width = geo.width;
-                b.height = geo.height;
-            }
-            beforeBoxes[tl] = b;
-        }
+    for (Toplevel *tl : self->getToplevels()) {
+        if (self->getLayout()->getWindowWorkspace(tl) != ws) continue;
+        struct wlr_box b;
+        b.x = tl->getSceneTree()->node.x;
+        b.y = tl->getSceneTree()->node.y;
+        struct wlr_surface *surf = tl->get()->base->surface;
+        if (surf) { b.width = surf->current.width; b.height = surf->current.height; }
+        else { struct wlr_box geo = tl->get()->base->geometry; b.width = geo.width; b.height = geo.height; }
+        m[tl] = b;
     }
+    return m;
+}
+inline void arrangeHelper(LayoutManager *layout, Output *out, const struct wlr_box &usable, const struct wlr_box &full) {
     layout->arrange(usable, full, out->getWorkspace());
-    if (doTilingAnim) {
-        auto afterBoxes = layout->snapshotGeometries(out->getWorkspace());
-        // windowLayerOnly true means we only animate windows, which we already do
-        animateTilingMove(beforeBoxes, afterBoxes);
-    }
-    // Sync window decorations geometries after arrange
-    if (decorManager) {
-        for (Toplevel *tl : toplevels) {
-            if (layout->getWindowWorkspace(tl) != out->getWorkspace()) continue;
-            struct wlr_box box;
-            bool has = layout->getWindowGeometry(tl, out->getWorkspace(), usable, box);
-            if (!has) has = layout->getWindowGeometry(tl, box);
-            if (!has) {
-                // fallback to scene node pos + xdg geometry
-                auto *node = tl->getSceneTree();
-                struct wlr_box *geo = &tl->get()->base->geometry;
-                box = {node->node.x + geo->x, node->node.y + geo->y, geo->width, geo->height};
-                if (box.width==0) box.width=800;
-                if (box.height==0) box.height=600;
-            }
-            if (auto *dec = decorManager->decorationFor(tl)) {
-                dec->updateGeometry(box.x, box.y, box.width, box.height);
-                // hide decorations for fullscreen/maximized windows if needed (border stays but titlebar maybe hidden)
-                bool isFs = layout->isFullscreen(tl);
-                bool isMx = layout->isMaximized(tl);
-                // For fullscreen, hide borders/title; for maximized keep border but no outer gap
-                dec->setVisible(!(isFs));
-                if (isMx && decorManager->config().border.enabled) dec->setVisible(true);
-            }
+}
+inline void syncDecorationsHelper(Compositor *self, Output *out, const struct wlr_box &usable) {
+    if (!self->getDecorationManager()) return;
+    auto *decor = self->getDecorationManager();
+    auto *layout = self->getLayout();
+    for (Toplevel *tl : self->getToplevels()) {
+        if (layout->getWindowWorkspace(tl) != out->getWorkspace()) continue;
+        struct wlr_box box;
+        bool has = layout->getWindowGeometry(tl, out->getWorkspace(), usable, box);
+        if (!has) has = layout->getWindowGeometry(tl, box);
+        if (!has) {
+            auto *node = tl->getSceneTree();
+            struct wlr_box *geo = &tl->get()->base->geometry;
+            box = {node->node.x + geo->x, node->node.y + geo->y, geo->width, geo->height};
+            if (box.width==0) box.width=800;
+            if (box.height==0) box.height=600;
+        }
+        if (auto *dec = decor->decorationFor(tl)) {
+            dec->updateGeometry(box.x, box.y, box.width, box.height);
+            bool isFs = layout->isFullscreen(tl);
+            bool isMx = layout->isMaximized(tl);
+            dec->setVisible(!(isFs));
+            if (isMx && decor->config().border.enabled) dec->setVisible(true);
         }
     }
-    int ws2 = out->getWorkspace();
-    // Handle layer visibility for fullscreen (hide shell) and ensure stacking respects popupTree
-    bool isFs = layout->getFullscreenWindow(ws2) != nullptr;
+}
+inline void updateLayerVisibilityHelper(LayoutManager *layout, Output *out, const QList<LayerSurface*> &layers) {
+    int ws = out->getWorkspace();
+    bool isFs = layout->getFullscreenWindow(ws) != nullptr;
     for (LayerSurface *ls : layers) {
         if (ls->get()->output != out->get()) continue;
         struct wlr_scene_layer_surface_v1 *sl = ls->getSceneLayer();
         if (!sl) continue;
-        if (isFs) {
-            wlr_scene_node_set_enabled(&sl->tree->node, false);
-        } else {
-            // Restore visibility based on mapped state
-            bool shouldEnable = ls->get()->surface->mapped;
-            wlr_scene_node_set_enabled(&sl->tree->node, shouldEnable);
-        }
+        if (isFs) wlr_scene_node_set_enabled(&sl->tree->node, false);
+        else wlr_scene_node_set_enabled(&sl->tree->node, ls->get()->surface->mapped);
     }
-    // Fix stacking: keep windows below popupTree (as per popup fix 42765e7)
+}
+inline void fixStackingHelper(LayoutManager *layout, struct wlr_scene_tree *popupTree, int ws) {
     if (Toplevel *fs = layout->getFullscreenWindow(ws)) {
-        if (fs->getSceneTree() && popupTree) {
-            wlr_scene_node_place_below(&fs->getSceneTree()->node, &popupTree->node);
-        }
+        if (fs->getSceneTree() && popupTree) wlr_scene_node_place_below(&fs->getSceneTree()->node, &popupTree->node);
     } else if (Toplevel *mx = layout->getMaximizedWindow(ws)) {
-        if (mx->getSceneTree() && popupTree) {
-            wlr_scene_node_place_below(&mx->getSceneTree()->node, &popupTree->node);
-        }
+        if (mx->getSceneTree() && popupTree) wlr_scene_node_place_below(&mx->getSceneTree()->node, &popupTree->node);
     } else {
-        // Tiling with floating windows: floating above tiled but below popup
         auto floating = layout->getFloatingWindows(ws);
-        for (Toplevel *fw : floating) {
-            if (fw->getSceneTree() && popupTree) {
-                wlr_scene_node_place_below(&fw->getSceneTree()->node, &popupTree->node);
-            }
-        }
+        for (Toplevel *fw : floating) if (fw->getSceneTree() && popupTree) wlr_scene_node_place_below(&fw->getSceneTree()->node, &popupTree->node);
     }
+}
+inline void finalizeArrangeHelper(Compositor *self, Output *out, const struct wlr_box &usable, const QList<LayerSurface*> &layers) {
+    syncDecorationsHelper(self, out, usable);
+    updateLayerVisibilityHelper(self->getLayout(), out, layers);
+    fixStackingHelper(self->getLayout(), self->getPopupTree(), out->getWorkspace());
+}
+} // anonymous helpers for arrange
+
+void Compositor::arrangeForOutput(Output *out)
+{
+    if (!out) return;
+    // recipe: resolve → build → commit → persist → wire
+    struct wlr_box usable = resolveUsableAreaHelper(this, out);
+    if (decorManager) usable = applyOuterGapHelper(usable, decorManager->config().outerGap);
+    struct wlr_box full = fullAreaForOutput(out->get());
+    bool doTilingAnim = config && config->animations.enabled && layout->getWorkspaceLayoutMode(out->getWorkspace())==LayoutManager::Mode::Tiling;
+    auto beforeBoxes = snapshotGeometriesHelper(this, out, doTilingAnim);
+    arrangeHelper(layout, out, usable, full);
+    if (doTilingAnim) {
+        auto afterBoxes = layout->snapshotGeometries(out->getWorkspace());
+        animateTilingMove(beforeBoxes, afterBoxes);
+    }
+    finalizeArrangeHelper(this, out, usable, layers);
 }
 
 void Compositor::rearrangeTiled()
@@ -1322,19 +1464,16 @@ Compositor::Compositor(const Astick &app, Config *cfg)
     display = wl_display_create();
     loop = wl_display_get_event_loop(display);
     backend = wlr_backend_autocreate(loop, nullptr);
-    if (backend == nullptr) {
-        wlr_log(WLR_ERROR, "Failed to create backend");
+    if (!logIf(backend != nullptr, "compositor.backend", "Failed to create backend")) {
         return;
     }
     renderer = wlr_renderer_autocreate(backend);
-    if (renderer == nullptr) {
-        wlr_log(WLR_ERROR, "failed to create renderer");
+    if (!logIf(renderer != nullptr, "compositor.renderer", "failed to create renderer")) {
         return;
     }
     wlr_renderer_init_wl_display(renderer, display);
     allocator = wlr_allocator_autocreate(backend, renderer);
-    if (allocator == nullptr) {
-        wlr_log(WLR_ERROR, "failed to create allocator");
+    if (!logIf(allocator != nullptr, "compositor.allocator", "failed to create allocator")) {
         return;
     }
 
@@ -1506,13 +1645,11 @@ Compositor::~Compositor()
 
 void Compositor::run()
 {
-    if (!initialized) {
-        wlr_log(WLR_ERROR, "Astick not initialized, will not run");
+    if (!logIf(initialized, "compositor.run", "Astick not initialized, will not run")) {
         return;
     }
 
-    if (!wlr_backend_start(backend)) {
-        wlr_log(WLR_ERROR, "Failed to start backend");
+    if (!logIf(wlr_backend_start(backend), "compositor.backend", "Failed to start backend")) {
         return;
     }
 
@@ -1711,8 +1848,7 @@ void Compositor::animateWindowClose(Toplevel *tl, const struct wlr_box &curBox) 
     if (!config || !config->animations.enabled) return;
     auto it = config->animations.pairs.find("window");
     if (it==config->animations.pairs.end()) return;
-    if (!it->second.hasEnd()) {
-        wlr_log(WLR_ERROR, "window animation reversible but missing end - skipping close anim");
+    if (!logIf(it->second.hasEnd(), "compositor.animate", "window animation reversible but missing end - skipping close anim")) {
         return;
     }
     const AnimDef &def = *it->second.end;

@@ -100,13 +100,21 @@ void handle_request_fullscreen(wl_listener *listener, void *)
     emit self->fullscreenRequested();
 }
 
+struct wlr_xdg_toplevel *Toplevel::get() const { return toplevel; }
+struct wlr_scene_tree *Toplevel::getSceneTree() const { return sceneTree; }
+Compositor *Toplevel::getServer() const { return server; }
+
 uint64_t Toplevel::genId() {
-    uint64_t h = (uint64_t)(uintptr_t)toplevel;
-    h = hashCombine(h, (uint64_t)(uintptr_t)sceneTree);
-    if (toplevel && toplevel->title) {
-        for (const char *c = toplevel->title; *c; ++c) h = hashCombine(h, (uint64_t)(*c));
-    }
-    return ResourceKind::WindowBase + (h % ResourceKind::CountPerKind);
+    return allocateId(ResourceKind::WindowBase);
+}
+
+void Toplevel::setTargetBox(const struct wlr_box &target, const std::string &kind, std::function<void()> apply) {
+    animX = target.x;
+    animY = target.y;
+    animW = target.width;
+    animH = target.height;
+    // pool animation will be driven by compositor; keeping callback placeholder
+    (void)kind; (void)apply;
 }
 
 static bool close_snapshot_point_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy) {

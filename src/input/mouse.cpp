@@ -36,8 +36,7 @@ static void mouse_handle_destroy(struct wl_listener *listener, void *)
 }
 
 uint64_t Mouse::genId() {
-    uint64_t h = (uint64_t)(uintptr_t)device;
-    return ResourceKind::InputBase + (h % ResourceKind::CountPerKind);
+    return allocateId(ResourceKind::InputBase);
 }
 
 Mouse::Mouse(struct wlr_input_device *device_)
@@ -56,8 +55,7 @@ void Mouse::applyConfig(const MouseConfig &cfg) {
         return;
     }
     struct libinput_device *libdev = wlr_libinput_get_device_handle(device);
-    if (!libdev) {
-        wlr_log(WLR_ERROR, "Failed to get libinput handle for %s", device->name ? device->name : "unknown");
+    if (!logIf(libdev != nullptr, "mouse.libinput", "Failed to get libinput handle for %s", device->name ? device->name : "unknown")) {
         return;
     }
 

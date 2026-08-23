@@ -45,9 +45,10 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *)
     delete self;
 }
 
+struct wlr_keyboard *Keyboard::getKeyboard() const { return wlrKeyboard; }
+
 uint64_t Keyboard::genId() {
-    uint64_t h = (uint64_t)(uintptr_t)wlrKeyboard;
-    return ResourceKind::InputBase + (h % ResourceKind::CountPerKind);
+    return allocateId(ResourceKind::InputBase);
 }
 
 Keyboard::Keyboard(struct wlr_input_device *device, struct wlr_seat *seat_)
@@ -72,8 +73,7 @@ Keyboard::Keyboard(struct wlr_input_device *device, struct wlr_seat *seat_)
 
 void Keyboard::applyConfig(const KeyboardConfig &cfg) {
     struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    if (!context) {
-        wlr_log(WLR_ERROR, "Failed to create xkb_context");
+    if (!logIf(context != nullptr, "keyboard.xkb", "Failed to create xkb_context")) {
         return;
     }
     struct xkb_rule_names names = {};
@@ -96,7 +96,7 @@ void Keyboard::applyConfig(const KeyboardConfig &cfg) {
         xkb_keymap_unref(keymap);
         wlr_log(WLR_INFO, "Keyboard keymap set successfully for %s", layouts.c_str());
     } else {
-        wlr_log(WLR_ERROR, "Failed to create keymap for layouts '%s' variant '%s' options '%s' - trying fallback us", layouts.c_str(), variant.c_str(), options.c_str());
+        logAndContinue(QStringLiteral("keyboard.xkb"), QStringLiteral("Failed to create keymap for layouts '%1' variant '%2' options '%3' - trying fallback us").arg(QString::fromStdString(layouts), QString::fromStdString(variant), QString::fromStdString(options)));
         struct xkb_rule_names fallback = {};
         fallback.layout = "us";
         struct xkb_keymap *fb = xkb_keymap_new_from_names(context, &fallback, XKB_KEYMAP_COMPILE_NO_FLAGS);

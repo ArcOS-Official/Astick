@@ -77,9 +77,11 @@ void LayerSurface::configure()
     wlr_scene_layer_surface_v1_configure(sceneLayer, &full_area, &usable_area);
 }
 
+struct wlr_layer_surface_v1 *LayerSurface::get() const { return layer; }
+struct wlr_scene_layer_surface_v1 *LayerSurface::getSceneLayer() const { return sceneLayer; }
+
 uint64_t LayerSurface::genId() {
-    uint64_t h = (uint64_t)(uintptr_t)layer;
-    return ResourceKind::LayerBase + (h % ResourceKind::CountPerKind);
+    return allocateId(ResourceKind::LayerBase);
 }
 
 LayerSurface::LayerSurface(

@@ -18,6 +18,8 @@
 
 #pragma once
 #include "wlroots.h"
+#include <QString>
+#include <type_traits>
 
 #define signal(name, sig, callback) \
     name = signal_(callback); \
@@ -25,3 +27,32 @@
 struct wl_listener signal_(
     void (*callback)(struct wl_listener *, void *)
 );
+
+// Log-and-continue helpers — never throw/abort, return safe fallback.
+void logAndContinue(const QString &ctx, const QString &detail);
+void logAndContinue(const char *ctx, const char *detail);
+bool logIf(bool ok, const char *ctx, const char *fmt, ...);
+
+template<typename T>
+T valueOrLog(T v, T fallback, const char *ctx) {
+    bool invalid = false;
+    if constexpr (std::is_pointer_v<T>) {
+        invalid = (v == nullptr);
+    } else if constexpr (std::is_same_v<T, QString>) {
+        invalid = v.isEmpty();
+    } else if constexpr (std::is_arithmetic_v<T>) {
+        invalid = (v == T{});
+    } else {
+        invalid = (v == T{});
+    }
+    if (invalid) {
+        logAndContinue(QString::fromUtf8(ctx), QStringLiteral("value invalid, using fallback"));
+        return fallback;
+    }
+    return v;
+}
+
+// Explicit instantiation declarations for common types (definitions in util.cpp if needed)
+extern template int valueOrLog<int>(int, int, const char *);
+extern template float valueOrLog<float>(float, float, const char *);
+extern template double valueOrLog<double>(double, double, const char *);
