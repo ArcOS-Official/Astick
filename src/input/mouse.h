@@ -18,14 +18,14 @@
 
 #pragma once
 
-#include <qobject.h>
+#include "../resource.h"
 #include "../wlroots.h"
 
 struct MouseConfig;
-class Mouse : public QObject {
+class Mouse : public Resource {
     Q_OBJECT
-
 public:
+    uint64_t genId() override;
     Mouse(struct wlr_input_device *device);
     ~Mouse();
     void applyConfig(const MouseConfig &cfg);

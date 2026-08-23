@@ -45,8 +45,14 @@ void keyboard_handle_destroy(struct wl_listener *listener, void *)
     delete self;
 }
 
+uint64_t Keyboard::genId() {
+    uint64_t h = (uint64_t)(uintptr_t)wlrKeyboard;
+    return ResourceKind::InputBase + (h % ResourceKind::CountPerKind);
+}
+
 Keyboard::Keyboard(struct wlr_input_device *device, struct wlr_seat *seat_)
 {
+    generateId();
     seat = seat_;
     wlrKeyboard = wlr_keyboard_from_input_device(device);
 

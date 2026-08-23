@@ -33,6 +33,9 @@
 #include "layout.h"
 #include "application.h"
 #include "config.h"
+#include "animation.h"
+#include "animation_pool.h"
+#include "decoration.h"
 
 class Compositor : public QObject
 {
@@ -60,10 +63,14 @@ public:
     struct wlr_box fullAreaForOutput(struct wlr_output *output);
     Config* getConfig() { return config; }
     LayoutManager *getLayout() { return layout; }
+    AnimationManager *getAnimationManager() { return animManager; }
+    DecorationManager *getDecorationManager() { return decorManager; }
     void rearrangeTiled();
     void arrangeForOutput(Output *out);
     bool setFullscreen(Toplevel *toplevel, bool fullscreen);
     bool setMaximized(Toplevel *toplevel, bool maximized);
+    void applyConfigDecorations(); // sync Config -> runtime managers
+    void scheduleAllOutputs(); // force frame at max fps (used by AnimationManager)
 
 public slots:
     void run();
@@ -88,6 +95,9 @@ private slots:
     void onInputAdded(struct wlr_input_device *device);
     void onToplevelMapped(Toplevel *toplevel);
     void onToplevelUnmapped(Toplevel *toplevel);
+
+public:
+    void startCloseAnimation(Toplevel *toplevel);
 
 private:
     bool initialized = false;
@@ -116,6 +126,9 @@ private:
 
     CursorManager *cursorMgrObj = nullptr;
     LayoutManager *layout = nullptr;
+    AnimationManager *animManager = nullptr;
+    AnimationPool *animPool = nullptr;
+    DecorationManager *decorManager = nullptr;
     Config *config = nullptr;
 
     Toplevel *detachedWindow = nullptr;
@@ -138,4 +151,16 @@ private:
 
     void addKeyboard(struct wlr_input_device *device);
     void addMouse(struct wlr_input_device *device);
+
+    // Animation helpers (new pool, target-driven)
+    struct wlr_box boxForStyle(AnimationStyle style, const struct wlr_box &finalBox, bool isStart);
+    void animateBoxForToplevel(Toplevel *tl, struct wlr_box from, struct wlr_box to, const AnimDef &def, const QString &id);
+    void animateBoxForToplevelPool(Toplevel *tl, struct wlr_box from, struct wlr_box to, const std::string &kind);
+    void animateTilingMove(const std::unordered_map<Toplevel*, struct wlr_box> &before, const std::unordered_map<Toplevel*, struct wlr_box> &after);
+    void animateWindowOpen(Toplevel *tl, const struct wlr_box &finalBox);
+    void animateWindowClose(Toplevel *tl, const struct wlr_box &curBox);
+    void animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const struct wlr_box &usable);
+    void animatePopupOpen(Popup *popup);
+    void animatePopupClose(Popup *popup);
+    void dumpDebugState();
 };

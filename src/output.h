@@ -18,15 +18,15 @@
 
 #pragma once
 
-#include <QObject>
+#include "resource.h"
 #include <ctime>
 #include "wlroots.h"
 
-class Output : public QObject
+class Output : public Resource
 {
     Q_OBJECT
-
 public:
+    uint64_t genId() override;
     Output(
         struct wlr_output *output_,
         struct wlr_renderer *renderer,

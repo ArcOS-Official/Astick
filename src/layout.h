@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QList>
 #include <QMap>
+#include <QHash>
 #include <memory>
 #include <vector>
 #include <optional>
@@ -125,6 +126,13 @@ public:
     bool setSplitRatio(Toplevel *toplevel, double ratio);
     bool handleResize(Toplevel *toplevel, struct wlr_box usable, double cursorX, double cursorY, uint32_t edges);
     bool commitResize(Toplevel *toplevel, struct wlr_box usable, uint32_t edges);
+    // Decoration helpers: retrieve current leaf geometry for a window (for border positioning)
+    bool getWindowGeometry(Toplevel *toplevel, struct wlr_box &out) const;
+    bool getWindowGeometry(Toplevel *toplevel, int workspace, struct wlr_box usable, struct wlr_box &out) const;
+    std::unordered_map<Toplevel*, struct wlr_box> snapshotGeometries(int workspace) const;
+    std::unordered_map<Toplevel*, struct wlr_box> snapshotGeometries(int workspace, struct wlr_box usable) const;
+    void applyGeometries(const std::unordered_map<Toplevel*, struct wlr_box> &boxes);
+    void setLeafGeometry(Toplevel *tl, const struct wlr_box &box);
 
     // Configurables (tweakable)
     void setDefaultSplitRatio(double r) { defaultSplitRatio = r; }

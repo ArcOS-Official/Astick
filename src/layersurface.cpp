@@ -77,11 +77,17 @@ void LayerSurface::configure()
     wlr_scene_layer_surface_v1_configure(sceneLayer, &full_area, &usable_area);
 }
 
+uint64_t LayerSurface::genId() {
+    uint64_t h = (uint64_t)(uintptr_t)layer;
+    return ResourceKind::LayerBase + (h % ResourceKind::CountPerKind);
+}
+
 LayerSurface::LayerSurface(
     Compositor *server_,
     struct wlr_layer_surface_v1 *surface
 )
 {
+    generateId();
     server = server_;
     layer = surface;
 

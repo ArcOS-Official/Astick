@@ -29,6 +29,7 @@ void handle_map(wl_listener *listener, void *)
 void handle_unmap(wl_listener *listener, void *)
 {
     Toplevel *self = wl_container_of(listener, self, unmap);
+    wlr_log(WLR_INFO, "handle_unmap: tl %p id %lu", (void*)self, (unsigned long)self->id);
     emit self->unmapped();
 }
 
@@ -44,6 +45,7 @@ void handle_commit(wl_listener *listener, void *)
 void handle_destroy(wl_listener *listener, void *)
 {
     Toplevel *self = wl_container_of(listener, self, destroy);
+    wlr_log(WLR_INFO, "handle_destroy: tl %p id %lu", (void*)self, (unsigned long)self->id);
     wl_list_remove(&self->map.link);
     wl_list_remove(&self->unmap.link);
     wl_list_remove(&self->commit.link);
@@ -52,8 +54,19 @@ void handle_destroy(wl_listener *listener, void *)
     wl_list_remove(&self->request_resize.link);
     wl_list_remove(&self->request_maximize.link);
     wl_list_remove(&self->request_fullscreen.link);
+    // Start close animation via compositor; full cleanup will happen when animation instance is destroyed
+    if (self->server) {
+        self->server->startCloseAnimation(self);
+        return;
+    }
+    // Fallback immediate destroy if no server
     emit self->destroyed();
+    self->destroyCloseSnapshot();
     delete self;
+}
+
+void Toplevel::destroy_cb(QObject *) {
+    handle_destroy(&destroy, nullptr);
 }
 
 void handle_request_move(wl_listener *listener, void *)
@@ -87,6 +100,62 @@ void handle_request_fullscreen(wl_listener *listener, void *)
     emit self->fullscreenRequested();
 }
 
+uint64_t Toplevel::genId() {
+    uint64_t h = (uint64_t)(uintptr_t)toplevel;
+    h = hashCombine(h, (uint64_t)(uintptr_t)sceneTree);
+    if (toplevel && toplevel->title) {
+        for (const char *c = toplevel->title; *c; ++c) h = hashCombine(h, (uint64_t)(*c));
+    }
+    return ResourceKind::WindowBase + (h % ResourceKind::CountPerKind);
+}
+
+static bool close_snapshot_point_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy) {
+    (void)buffer; (void)sx; (void)sy;
+    return false;
+}
+
+void Toplevel::createCloseSnapshot() {
+    if (closeSnapshot) return;
+    if (!toplevel || !toplevel->base || !toplevel->base->surface) return;
+    struct wlr_surface *surf = toplevel->base->surface;
+    if (!surf || !surf->buffer) return;
+    struct wlr_buffer *buf = &surf->buffer->base;
+    wlr_buffer_lock(buf);
+    closeBuffer = buf;
+    // Create a scene buffer as child of sceneTree's parent, so it stays visible after xdg surface is destroyed
+    struct wlr_scene_tree *parent = nullptr;
+    if (sceneTree && sceneTree->node.parent) {
+        // parent is wlr_scene_tree, try to cast
+        parent = (struct wlr_scene_tree*)sceneTree->node.parent;
+    } else {
+        // fallback to sceneTree itself
+        parent = sceneTree;
+    }
+    if (!parent) return;
+    closeSnapshot = wlr_scene_buffer_create(parent, buf);
+    if (closeSnapshot) {
+        // Make snapshot non-interactive so pointer events fall through to windows underneath
+        closeSnapshot->point_accepts_input = close_snapshot_point_accepts_input;
+        // Place snapshot at same position as original
+        wlr_scene_node_set_position(&closeSnapshot->node, sceneTree->node.x, sceneTree->node.y);
+        wlr_scene_buffer_set_dest_size(closeSnapshot, surf->current.width, surf->current.height);
+        // Keep snapshot on top of original during animation, then hide original
+        // wlr_scene_node_raise_to_top(&closeSnapshot->node);
+        // Optionally set opacity via filter? For fade we can use wlr_scene_buffer_set_opacity if available
+    }
+}
+
+void Toplevel::destroyCloseSnapshot() {
+    if (closeSnapshot) {
+        wlr_scene_node_destroy(&closeSnapshot->node);
+        closeSnapshot = nullptr;
+    }
+    if (closeBuffer) {
+        wlr_buffer_unlock(closeBuffer);
+        closeBuffer = nullptr;
+    }
+}
+
 Toplevel::Toplevel(
     Compositor *server_,
     struct wlr_xdg_toplevel *toplevel_,
@@ -98,6 +167,7 @@ Toplevel::Toplevel(
     sceneTree = sceneTree_;
     sceneTree->node.data = this;
     toplevel->base->data = (void *)sceneTree;
+    generateId();
 
     signal(map, &toplevel->base->surface->events.map, handle_map);
     signal(unmap, &toplevel->base->surface->events.unmap, handle_unmap);

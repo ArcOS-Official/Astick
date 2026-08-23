@@ -1,2 +1,4 @@
 build/
 config.json
+# Just a scratch directory for AI to follow longer tasks
+ai/

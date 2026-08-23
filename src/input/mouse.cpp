@@ -35,8 +35,14 @@ static void mouse_handle_destroy(struct wl_listener *listener, void *)
     delete self;
 }
 
+uint64_t Mouse::genId() {
+    uint64_t h = (uint64_t)(uintptr_t)device;
+    return ResourceKind::InputBase + (h % ResourceKind::CountPerKind);
+}
+
 Mouse::Mouse(struct wlr_input_device *device_)
 {
+    generateId();
     device = device_;
     auto *wrapper = new MouseDestroyListener;
     wrapper->self = this;

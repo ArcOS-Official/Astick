@@ -1564,3 +1564,94 @@ bool LayoutManager::commitResize(Toplevel *toplevel, struct wlr_box usable, uint
     }
     return false;
 }
+
+bool LayoutManager::getWindowGeometry(Toplevel *toplevel, struct wlr_box &out) const {
+    for (auto &ws : workspaces) {
+        if (auto *fw = findFloating(&ws, toplevel)) {
+            out = {fw->x, fw->y, fw->width, fw->height};
+            return true;
+        }
+        if (ws.fullscreenWindow == toplevel || ws.maximizedWindow == toplevel) {
+            // For fs/max, leaf geometry is not valid; use the node's direct geometry if any leaf exists
+            // Fallback to floating-like: return last known leaf box if present
+        }
+        BspNode *leaf = findLeaf(ws.root.get(), toplevel);
+        if (leaf && leaf->positioned) {
+            out = {leaf->x, leaf->y, leaf->width, leaf->height};
+            return true;
+        }
+    }
+    return false;
+}
+
+bool LayoutManager::getWindowGeometry(Toplevel *toplevel, int workspace, struct wlr_box usable, struct wlr_box &out) const {
+    const Workspace *ws = findWorkspace(workspace);
+    if (!ws) return getWindowGeometry(toplevel, out);
+    if (auto *fw = findFloating(ws, toplevel)) {
+        out = {fw->x, fw->y, fw->width, fw->height};
+        return true;
+    }
+    BspNode *leaf = findLeaf(ws->root.get(), toplevel);
+    if (!leaf) return false;
+    // compute box via traversal
+    out = getBoxForNode(const_cast<BspNode*>(ws->root.get()), leaf, usable);
+    return true;
+}
+
+std::unordered_map<Toplevel*, struct wlr_box> LayoutManager::snapshotGeometries(int workspace) const {
+    std::unordered_map<Toplevel*, struct wlr_box> out;
+    const Workspace *ws = findWorkspace(workspace);
+    if (!ws) return out;
+    std::vector<BspNode*> leaves;
+    collectLeaves(ws->root.get(), leaves);
+    for(auto *leaf: leaves){
+        if(leaf->toplevel && leaf->positioned){
+            struct wlr_box b = {leaf->x, leaf->y, leaf->width, leaf->height};
+            out.emplace(leaf->toplevel, b);
+        }
+    }
+    for(auto &fw: ws->floating){
+        if(fw.toplevel && fw.positioned){
+            struct wlr_box b = {fw.x, fw.y, fw.width, fw.height};
+            out.emplace(fw.toplevel, b);
+        }
+    }
+    return out;
+}
+std::unordered_map<Toplevel*, struct wlr_box> LayoutManager::snapshotGeometries(int workspace, struct wlr_box usable) const {
+    std::unordered_map<Toplevel*, struct wlr_box> out;
+    const Workspace *ws = findWorkspace(workspace);
+    if (!ws) return out;
+    std::vector<std::pair<BspNode*, struct wlr_box>> boxes;
+    getAllBoxesRecursive(const_cast<BspNode*>(ws->root.get()), usable, boxes);
+    for(auto &p: boxes){
+        if(p.first->toplevel) out.emplace(p.first->toplevel, p.second);
+    }
+    for(auto &fw: ws->floating){
+        if(fw.toplevel){
+            struct wlr_box b = {fw.x, fw.y, fw.width, fw.height};
+            if(fw.positioned) out.emplace(fw.toplevel, b);
+        }
+    }
+    return out;
+}
+
+void LayoutManager::setLeafGeometry(Toplevel *tl, const struct wlr_box &box) {
+    for (auto &ws : workspaces) {
+        if (auto *fw = findFloating(&ws, tl)) {
+            fw->x = box.x; fw->y = box.y; fw->width = box.width; fw->height = box.height; fw->positioned = true;
+            return;
+        }
+        BspNode *leaf = findLeaf(ws.root.get(), tl);
+        if (leaf) {
+            leaf->x = box.x; leaf->y = box.y; leaf->width = box.width; leaf->height = box.height; leaf->positioned = true;
+            return;
+        }
+    }
+}
+
+void LayoutManager::applyGeometries(const std::unordered_map<Toplevel*, struct wlr_box> &boxes) {
+    for (auto &kv : boxes) {
+        setLeafGeometry(kv.first, kv.second);
+    }
+}

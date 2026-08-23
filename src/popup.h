@@ -18,17 +18,17 @@
 
 #pragma once
 
-#include <QObject>
-#include <qobject.h>
+#include "resource.h"
+
 #include "wlroots.h"
 
 class Compositor;
 
-class Popup : public QObject
+class Popup : public Resource
 {
     Q_OBJECT
-
 public:
+    uint64_t genId() override;
     Popup(
         Compositor *server,
         struct wlr_xdg_popup *popup_

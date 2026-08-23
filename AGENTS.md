@@ -23,8 +23,10 @@ cmake --build build          # binary: build/Astick
 ./build/Astick --mode tiling|floating|monowindow --config /path/to/config.json
 ```
 
-- Config resolution in `src/main.cpp:39-64`: `--config` arg > `./config.json` (cwd) > `<appDir>/config.json` > hardcoded `/home/kernelstate/data/personal/Astick/config.json` (dev leftover — do not rely on) > `~/.config/Astick/config.json` (`Config::defaultPath()` respects `XDG_CONFIG_HOME`).
-- Sample config at `config.json` (root). `Config::save()` preserves unknown JSON fields via `rawJson`.
+- Config resolution in `src/main.cpp:39-64`: `--config` arg > `~/.config/Astick/config.json` (`Config::defaultPath()` respects `XDG_CONFIG_HOME`). On first run, embedded `config.template.json` (stripped of device-specific `outputs.monitors`) is written to that path. Bare `off` disables an animation (zero-duration), bare `default` restores code default via pre-tokenizer; invalid configs are renamed to `config.json.old` and regenerated with full error log. No local-dir (`./config.json` / `<appDir>/config.json` / hardcoded dev path) lookup.
+- Sample config at `config.json` (root) and stripped template at `config.template.json` (source for embedded `src/embedded_config.h`). `Config::save()` preserves unknown JSON fields via `rawJson`.
+- Keybinds use `Mod` placeholder resolved via `mod` (`Config::modkey`, default `"Alt"`, top-level `mod`/`modkey` or `input.mod`). In windowed/nested mode (`WAYLAND_DISPLAY`/`DISPLAY` present at launch, `Config::isWindowedMode()`), `Super` as mod falls back to `Alt` to avoid parent compositor conflict (`Config::effectiveMod()`).
+- Plans: `ai/superpowers/plans/` (renamed from `docs/superpowers/plans/` on 2026-08-22 — `docs/` is deprecated, use `ai/`).
 - Must run inside a Wayland-capable environment (wlroots backend); cannot be unit-tested headless without a nested backend.
 
 ## Architecture
@@ -42,6 +44,6 @@ cmake --build build          # binary: build/Astick
 ## Conventions / Gotchas
 
 - CMake adds all sources explicitly in `CMakeLists.txt:27-42` — add new `.cpp` files there.
-- `main.cpp:51` hardcodes an absolute developer path; fix or remove before distributing.
+- `main.cpp` now uses XDG-only lookup; no hardcoded dev path remains.
 - No existing `AGENTS.md`/`CLAUDE.md`/`opencode.json` — this file is the only agent instruction source.
 - Keep `build/` out of commits (`.gitignore`).

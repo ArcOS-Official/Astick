@@ -18,13 +18,12 @@
 
 #pragma once
 
-#include <QObject>
-#include <qobject.h>
+#include "resource.h"
 #include "wlroots.h"
 
 class Compositor;
 
-class Toplevel : public QObject
+class Toplevel : public Resource
 {
     Q_OBJECT
 
@@ -37,6 +36,22 @@ public:
     struct wlr_xdg_toplevel *get() const { return toplevel; }
     struct wlr_scene_tree *getSceneTree() const { return sceneTree; }
     Compositor *getServer() const { return server; }
+
+    uint64_t genId() override;
+
+    // Animatable geometry (for new AnimationPool target-driven flow)
+    int animX = 0, animY = 0, animW = 0, animH = 0;
+    void setTargetBox(const struct wlr_box &target, const std::string &kind, std::function<void()> apply = nullptr);
+
+    // Close animation snapshot: keep last buffer visible while animating
+    struct wlr_scene_buffer *closeSnapshot = nullptr;
+    struct wlr_buffer *closeBuffer = nullptr;
+    bool closeAnimationRunning = false;
+    bool pendingDestroy = false;
+    float animOpacity = 1.0f;
+    void createCloseSnapshot();
+    void destroyCloseSnapshot();
+    void destroy_cb(QObject *);
 
     friend void handle_map(wl_listener *listener, void *data);
     friend void handle_unmap(wl_listener *listener, void *data);

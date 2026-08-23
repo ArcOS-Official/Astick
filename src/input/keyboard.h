@@ -18,14 +18,14 @@
 
 #pragma once
 
-#include <qobject.h>
+#include "../resource.h"
 #include "../wlroots.h"
 
 struct KeyboardConfig;
-class Keyboard : public QObject {
+class Keyboard : public Resource {
     Q_OBJECT
-
 public:
+    uint64_t genId() override;
     Keyboard(struct wlr_input_device *device, struct wlr_seat *seat);
     ~Keyboard();
     struct wlr_keyboard *getKeyboard() const { return wlrKeyboard; }

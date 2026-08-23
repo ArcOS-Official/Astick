@@ -18,17 +18,17 @@
 
 #pragma once
 
-#include <QObject>
-#include <qobject.h>
+#include "resource.h"
+
 #include "wlroots.h"
 
 class Compositor;
 
-class LayerSurface : public QObject
+class LayerSurface : public Resource
 {
     Q_OBJECT
-
 public:
+    uint64_t genId() override;
     LayerSurface(
         Compositor *server,
         struct wlr_layer_surface_v1 *surface

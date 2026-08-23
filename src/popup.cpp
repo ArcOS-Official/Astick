@@ -31,11 +31,17 @@ void handle_popup_destroy(wl_listener *listener, void *)
     delete self;
 }
 
+uint64_t Popup::genId() {
+    uint64_t h = (uint64_t)(uintptr_t)popup;
+    return ResourceKind::PopupBase + (h % ResourceKind::CountPerKind);
+}
+
 Popup::Popup(
     Compositor *server_,
     struct wlr_xdg_popup *popup_
 )
 {
+    generateId();
     server = server_;
     popup = popup_;
 
