@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
 
     QString mode = "tiling";
     QString configPathOverride;
-    bool useClassic = false; // --classic keeps old Compositor path (Phase 0 shim)
+    bool useClassic = true; // default to legacy Compositor so window starts (Engine is experimental)
     for (int i = 1; i < argc; i++) {
         QString arg = QString::fromUtf8(argv[i]);
         if (arg == "--help" || arg == "-h") {
@@ -33,7 +33,8 @@ int main(int argc, char **argv) {
                 "  --help, -h          Show this help\n"
                 "  --mode <mode>       Initial layout mode: tiling, floating, monowindow\n"
                 "  --config <path>     Path to config.json\n"
-                "  --classic           Use legacy Compositor (wl_event_loop) instead of Engine\n"
+                "  --new-engine        Use new State+Engine custom loop (experimental)\n"
+                "  --classic           Alias for default legacy Compositor (wl_event_loop)\n"
             );
             return 0;
         }
@@ -41,6 +42,8 @@ int main(int argc, char **argv) {
             mode = QString::fromUtf8(argv[++i]);
         } else if (arg == "--config" && i + 1 < argc) {
             configPathOverride = QString::fromUtf8(argv[++i]);
+        } else if (arg == "--new-engine" || arg == "--experimental") {
+            useClassic = false;
         } else if (arg == "--classic") {
             useClassic = true;
         }
