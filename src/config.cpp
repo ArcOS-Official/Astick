@@ -4,10 +4,75 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <filesystem>
+#include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QStandardPaths>
+#include <QTextStream>
 #include <xkbcommon/xkbcommon.h>
 
-namespace fs = std::filesystem;
+bool AnimPair::hasEnd() const { return end.has_value(); }
+
+const AnimPair* AnimationsConfig::pairFor(const std::string &id) const {
+    auto it = pairs.find(id);
+    if (it != pairs.end()) return &it->second;
+    return nullptr;
+}
+AnimPair* AnimationsConfig::pairFor(const std::string &id) {
+    auto it = pairs.find(id);
+    if (it != pairs.end()) return &it->second;
+    return nullptr;
+}
+bool AnimationsConfig::isEnabled(const std::string &id) const {
+    if (auto *p = pairFor(id)) return p->start.enabled;
+    auto it = presets.find(id);
+    if (it != presets.end()) return it->second.enabled;
+    return true;
+}
+int AnimationsConfig::durationFor(const std::string &id, int fallback) const {
+    if (auto *p = pairFor(id)) {
+        if (p->start.duration >= 0) return p->start.duration;
+    }
+    auto it = presets.find(id);
+    if (it != presets.end() && it->second.duration >= 0) return it->second.duration;
+    return fallback;
+}
+std::string AnimationsConfig::easingFor(const std::string &id, const std::string &fallback) const {
+    if (auto *p = pairFor(id)) {
+        if (!p->start.easing.empty()) return p->start.easing;
+    }
+    auto it = presets.find(id);
+    if (it != presets.end() && !it->second.easing.empty()) return it->second.easing;
+    return fallback;
+}
+int AnimationsConfig::durationFor(const std::string &id, bool isStart, int fallback) const {
+    if (auto *p = pairFor(id)) {
+        const AnimDef &d = isStart ? p->start : (p->end ? *p->end : p->start);
+        if (d.duration >= 0) return d.duration;
+    }
+    return durationFor(id, fallback);
+}
+std::string AnimationsConfig::easingFor(const std::string &id, bool isStart, const std::string &fallback) const {
+    if (auto *p = pairFor(id)) {
+        const AnimDef &d = isStart ? p->start : (p->end ? *p->end : p->start);
+        if (!d.easing.empty()) return d.easing;
+    }
+    return easingFor(id, fallback);
+}
+bool AnimationsConfig::hasEndFor(const std::string &id) const {
+    if (auto *p = pairFor(id)) return p->hasEnd();
+    return false;
+}
+
+bool Keybind::matches(uint32_t modsMask_, xkb_keysym_t sym) const {
+    return modsMask == modsMask_ && keysym == sym;
+}
+
+std::filesystem::path Config::defaultPathFs() { return std::filesystem::path(defaultPath().toStdString()); }
+QString Config::outputIdQ(struct wlr_output *output) { return QString::fromStdString(outputId(output)); }
+void Config::setOutputConfig(const std::string &id, const OutputEntry &entry) { setOutputConfig(QString::fromStdString(id), entry); }
+bool Config::load(const std::filesystem::path &path) { return load(QString::fromStdString(path.string())); }
+bool Config::save(const std::filesystem::path &path) const { return save(QString::fromStdString(path.string())); }
 
 std::string Config::s_originalWaylandDisplay;
 std::string Config::s_originalDisplay;
@@ -50,17 +115,20 @@ Config::Config() {
     ensureDefaults();
 }
 
-std::filesystem::path Config::defaultPath() {
-    const char *xdg = std::getenv("XDG_CONFIG_HOME");
-    std::string base;
-    if (xdg && *xdg) {
-        base = xdg;
-    } else {
-        const char *home = std::getenv("HOME");
-        if (home) base = std::string(home) + "/.config";
-        else base = ".";
+QString Config::defaultPath() {
+    // QStandardPaths respects XDG_CONFIG_HOME automatically; fallback to manual check for completeness
+    QString cfg = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    if (cfg.isEmpty()) {
+        const char *xdg = std::getenv("XDG_CONFIG_HOME");
+        if (xdg && *xdg) cfg = QString::fromUtf8(xdg);
+        else {
+            const char *home = std::getenv("HOME");
+            if (home) cfg = QString::fromUtf8(home) + QStringLiteral("/.config");
+            else cfg = QStringLiteral(".");
+        }
     }
-    return fs::path(base) / "Astick" / "config.json";
+    QDir dir(cfg);
+    return dir.filePath(QStringLiteral("Astick/config.json"));
 }
 
 std::string Config::embeddedDefaultJson() {
@@ -68,8 +136,8 @@ std::string Config::embeddedDefaultJson() {
 }
 
 void Config::ensureDefaults() {
-    if (keybinds.empty()) {
-        keybinds = {
+    if (keybinds.isEmpty()) {
+        keybinds = QList<Keybind>{
             {{"Mod"}, "Escape", "quit", "", 0, XKB_KEY_NoSymbol},
             {{"Mod"}, "F1", "focus_prev", "", 0, XKB_KEY_NoSymbol},
             {{"Mod"}, "F2", "toggle_layout", "", 0, XKB_KEY_NoSymbol},
@@ -94,20 +162,20 @@ void Config::ensureDefaults() {
             if (k.action == "toggle_fullscreen" || k.action == "fullscreen" || k.action == "toggle_fullscreened") hasFullscreen = true;
         }
         if (!hasSwap) {
-            keybinds.push_back({{"Mod"}, "t", "swap_orientation", "", 0, XKB_KEY_NoSymbol});
+            keybinds.append(Keybind{{"Mod"}, "t", "swap_orientation", "", 0, XKB_KEY_NoSymbol});
             parseKeybinds();
         }
         if (!hasFloating) {
-            keybinds.push_back({{"Mod"}, "f", "toggle_floating", "", 0, XKB_KEY_NoSymbol});
+            keybinds.append(Keybind{{"Mod"}, "f", "toggle_floating", "", 0, XKB_KEY_NoSymbol});
             parseKeybinds();
         }
         if (!hasMaximize) {
-            keybinds.push_back({{"Mod"}, "m", "toggle_maximize", "", 0, XKB_KEY_NoSymbol});
+            keybinds.append(Keybind{{"Mod"}, "m", "toggle_maximize", "", 0, XKB_KEY_NoSymbol});
             parseKeybinds();
         }
         if (!hasFullscreen) {
-            keybinds.push_back({{}, "F11", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol});
-            keybinds.push_back({{"Mod"}, "Return", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol});
+            keybinds.append(Keybind{{}, "F11", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol});
+            keybinds.append(Keybind{{"Mod"}, "Return", "toggle_fullscreen", "", 0, XKB_KEY_NoSymbol});
             parseKeybinds();
         }
     }
@@ -169,31 +237,53 @@ const Keybind* Config::findKeybind(uint32_t mods, xkb_keysym_t sym) const {
     return nullptr;
 }
 
+namespace {
+// config helpers — resolve → build → commit → persist → wire, wlr_box by value, no heap for box math
+inline std::string sanitizeOutputId(std::string id) {
+    for (char &c : id) if (c == '/' || c == ' ') c = '_';
+    if (id.empty()) id = "unknown";
+    return id;
+}
+inline std::string buildOutputIdString(const std::string &name, const std::string &make, const std::string &model, const std::string &serial) {
+    std::string id = name;
+    if (!make.empty() || !model.empty() || !serial.empty()) {
+        id += ":" + make + ":" + model;
+        if (!serial.empty()) id += ":" + serial;
+    }
+    return sanitizeOutputId(id);
+}
+inline double computeDpiFromPhys(int pxW, int pxH, int mmW, int mmH) {
+    if (mmW <= 0 || mmH <= 0 || pxW <=0 || pxH <=0) return 96.0;
+    double diagPx = std::hypot((double)pxW, (double)pxH);
+    double diagMm = std::hypot((double)mmW, (double)mmH);
+    double diagIn = diagMm / 25.4;
+    if (diagIn <= 0) return 96.0;
+    double dpi = diagPx / diagIn;
+    if (dpi < 30 || dpi > 1000) return 96.0;
+    return dpi;
+}
+} // anonymous config helpers
+#ifdef ASTICK_ENABLE_TESTS
+#include "detail/compositor_helpers.h"
+namespace astick::detail {
+// config box helpers reuse same inline logic for tests
+} // namespace
+#endif
+
 std::string Config::outputId(struct wlr_output *output) {
     if (!output) return "unknown";
     std::string name = output->name ? output->name : "unknown";
     std::string make = output->make ? output->make : "";
     std::string model = output->model ? output->model : "";
     std::string serial = output->serial ? output->serial : "";
-    // Persistent ID: name:make:model:serial . If serial empty, use description hash fallback
-    std::string id = name;
-    if (!make.empty() || !model.empty() || !serial.empty()) {
-        id += ":" + make + ":" + model;
-        if (!serial.empty()) id += ":" + serial;
-    }
-    // sanitize: replace spaces and slashes
-    for (char &c : id) {
-        if (c == '/' || c == ' ') c = '_';
-    }
-    if (id.empty()) id = "unknown";
-    return id;
+    return buildOutputIdString(name, make, model, serial);
 }
 
 OutputEntry Config::getOutputConfig(struct wlr_output *output) const {
-    std::string id = outputId(output);
+    QString id = outputIdQ(output);
     auto it = monitors.find(id);
     if (it != monitors.end()) {
-        return it->second;
+        return it.value();
     }
     // not found: return default-derived entry with 0 meaning use preferred
     OutputEntry e;
@@ -205,39 +295,31 @@ OutputEntry Config::getOutputConfig(struct wlr_output *output) const {
     return e;
 }
 
-void Config::setOutputConfig(const std::string &id, const OutputEntry &entry) {
+void Config::setOutputConfig(const QString &id, const OutputEntry &entry) {
     monitors[id] = entry;
 }
 
 double Config::detectDpi(struct wlr_output *output) const {
     if (!output) return 96.0;
     // If config has dpi set for this monitor, use it
-    std::string id = outputId(output);
+    QString id = outputIdQ(output);
     auto it = monitors.find(id);
-    if (it != monitors.end() && it->second.dpi && *it->second.dpi > 0) {
-        return *it->second.dpi;
+    if (it != monitors.end() && it.value().dpi && *it.value().dpi > 0) {
+        return *it.value().dpi;
     }
     if (mouse.dpi > 0) return mouse.dpi;
-    // Auto detect from phys size
     int mmW = output->phys_width;
     int mmH = output->phys_height;
     int pxW = output->width;
     int pxH = output->height;
     if (mmW <= 0 || mmH <= 0 || pxW <=0 || pxH <=0) {
-        // try to use current mode size if output width not yet set
         if (output->current_mode) {
             pxW = output->current_mode->width;
             pxH = output->current_mode->height;
         }
         if (mmW <=0 || mmH <=0) return 96.0;
     }
-    double diagPx = std::hypot((double)pxW, (double)pxH);
-    double diagMm = std::hypot((double)mmW, (double)mmH);
-    double diagIn = diagMm / 25.4;
-    if (diagIn <= 0) return 96.0;
-    double dpi = diagPx / diagIn;
-    if (dpi < 30 || dpi > 1000) return 96.0;
-    return dpi;
+    return computeDpiFromPhys(pxW, pxH, mmW, mmH);
 }
 
 double Config::getOutputScale(struct wlr_output *output, const OutputEntry &entry) const {
@@ -370,14 +452,17 @@ static std::string preprocessConfigText(const std::string &raw, std::vector<std:
     return out;
 }
 
-bool Config::load(const std::filesystem::path &path) {
-    fs::path p = path.empty() ? defaultPath() : path;
+bool Config::load(const QString &path) {
+    QString p = path.isEmpty() ? defaultPath() : path;
     loadedPath = p;
-    std::ifstream f(p);
-    if (!f) {
+    QFile f(p);
+    if (!f.exists() || !f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return false;
     }
-    std::string raw((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    QTextStream in(&f);
+    QString rawQ = in.readAll();
+    f.close();
+    std::string raw = rawQ.toStdString();
     std::vector<std::string> allErrors;
     std::vector<std::string> preErrors;
     std::string preprocessed = preprocessConfigText(raw, preErrors);
@@ -396,14 +481,15 @@ bool Config::load(const std::filesystem::path &path) {
     // If parse failed, we cannot continue to per-field validation; go to error handling
     if (!allErrors.empty() && j.is_null()) {
         // j is null due to parse failure -> report and archive
-        std::cerr << "Config load error at " << p << " (" << allErrors.size() << " issues):\n";
+        std::cerr << "Config load error at " << p.toStdString() << " (" << allErrors.size() << " issues):\n";
         for(auto &e: allErrors) std::cerr << " - " << e << "\n";
         // try to archive
         try {
-            fs::path oldp = p;
-            oldp += ".old";
-            std::filesystem::rename(p, oldp);
-            std::cerr << "Renamed invalid config to " << oldp << "\n";
+            QString oldp = p + QStringLiteral(".old");
+            QFile::remove(oldp);
+            if (QFile::rename(p, oldp)) {
+                std::cerr << "Renamed invalid config to " << oldp.toStdString() << "\n";
+            }
         } catch(...) {}
         // regenerate
         loadOrCreateDefault();
@@ -430,7 +516,7 @@ bool Config::load(const std::filesystem::path &path) {
             if (o.contains("monitors") && o["monitors"].is_object()) {
                 monitors.clear();
                 for (auto &el : o["monitors"].items()) {
-                    monitors[el.key()] = el.value().get<OutputEntry>();
+                    monitors[QString::fromStdString(el.key())] = el.value().get<OutputEntry>();
                 }
             }
         }
@@ -477,12 +563,15 @@ bool Config::load(const std::filesystem::path &path) {
     });
     trySection("keybinds", [&](){
         if (j.contains("keybinds") && j["keybinds"].is_array()) {
-            keybinds = j["keybinds"].get<std::vector<Keybind>>();
+            auto vec = j["keybinds"].get<std::vector<Keybind>>();
+            keybinds.clear();
+            keybinds.reserve(vec.size());
+            for (auto &k : vec) keybinds.append(k);
             parseKeybinds();
         } else {
             ensureDefaults();
         }
-        if (keybinds.empty()) ensureDefaults();
+        if (keybinds.isEmpty()) ensureDefaults();
         else ensureDefaults();
         // re-parse after modkey known (ensureDefaults already called parseKeybinds with effectiveMod)
         // if modkey was parsed after ensureDefaults, we need to re-resolve Mod placeholders
@@ -514,15 +603,14 @@ bool Config::load(const std::filesystem::path &path) {
     }
 
     if (!allErrors.empty()) {
-        std::cerr << "Config load error at " << p << " (" << allErrors.size() << " issues):\n";
+        std::cerr << "Config load error at " << p.toStdString() << " (" << allErrors.size() << " issues):\n";
         for(auto &e: allErrors) std::cerr << " - " << e << "\n";
         try {
-            fs::path oldp = p;
-            oldp += ".old";
-            // remove previous .old if exists
-            std::filesystem::remove(oldp);
-            std::filesystem::rename(p, oldp);
-            std::cerr << "Renamed invalid config to " << oldp << "\n";
+            QString oldp = p + QStringLiteral(".old");
+            QFile::remove(oldp);
+            if (QFile::rename(p, oldp)) {
+                std::cerr << "Renamed invalid config to " << oldp.toStdString() << "\n";
+            }
         } catch(const std::exception &e){
             std::cerr << "Failed to rename invalid config: " << e.what() << "\n";
         }
@@ -530,10 +618,15 @@ bool Config::load(const std::filesystem::path &path) {
         std::string embedded = embeddedDefaultJson();
         if (!embedded.empty()) {
             try {
-                std::filesystem::create_directories(p.parent_path());
-                std::ofstream out(p);
-                out << embedded;
-                std::cerr << "Regenerated default config at " << p << "\n";
+                QFileInfo fi(p);
+                QDir dir = fi.dir();
+                if (!dir.exists()) dir.mkpath(QStringLiteral("."));
+                QFile out(p);
+                if (out.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+                    out.write(QByteArray::fromStdString(embedded));
+                    out.close();
+                }
+                std::cerr << "Regenerated default config at " << p.toStdString() << "\n";
                 // reload the freshly generated default (should succeed)
                 // parse embedded directly to reset state
                 try {
@@ -553,18 +646,22 @@ bool Config::load(const std::filesystem::path &path) {
     return true;
 }
 
-bool Config::save(const std::filesystem::path &path) const {
-    fs::path p = path.empty() ? loadedPath : path;
-    if (p.empty()) p = defaultPath();
+bool Config::save(const QString &path) const {
+    QString p = path.isEmpty() ? loadedPath : path;
+    if (p.isEmpty()) p = defaultPath();
     try {
-        if (!p.parent_path().empty()) fs::create_directories(p.parent_path());
+        QFileInfo fi(p);
+        QDir dir = fi.dir();
+        if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+            // still try to continue
+        }
         nlohmann::json j;
         // preserve raw unknown fields? For now rebuild
         j["outputs"] = nlohmann::json::object();
         j["outputs"]["default"] = defaultOutput;
         j["outputs"]["monitors"] = nlohmann::json::object();
-        for (auto &kv : monitors) {
-            j["outputs"]["monitors"][kv.first] = kv.second;
+        for (auto it = monitors.constBegin(); it != monitors.constEnd(); ++it) {
+            j["outputs"]["monitors"][it.key().toStdString()] = it.value();
         }
         j["input"] = nlohmann::json::object();
         j["input"]["keyboard"] = keyboard;
@@ -573,10 +670,18 @@ bool Config::save(const std::filesystem::path &path) const {
         j["decorations"] = decorations;
         j["animations"] = animations;
         j["mod"] = modkey;
-        j["keybinds"] = keybinds;
-        std::ofstream f(p);
-        if (!f) return false;
-        f << j.dump(4) << std::endl;
+        // keybinds: QList -> json array
+        {
+            nlohmann::json arr = nlohmann::json::array();
+            for (auto &k : keybinds) arr.push_back(k);
+            j["keybinds"] = arr;
+        }
+        QFile f(p);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) return false;
+        std::string dump = j.dump(4);
+        f.write(QByteArray::fromStdString(dump));
+        f.write("\n");
+        f.close();
         return true;
     } catch (const std::exception &e) {
         std::cerr << "Config save error: " << e.what() << std::endl;
@@ -585,15 +690,21 @@ bool Config::save(const std::filesystem::path &path) const {
 }
 
 void Config::loadOrCreateDefault() {
-    fs::path p = defaultPath();
-    if (std::filesystem::exists(p)) {
+    QString p = defaultPath();
+    QFileInfo fi(p);
+    if (fi.exists()) {
         if (load(p)) return;
     }
     std::string embedded = embeddedDefaultJson();
     if (!embedded.empty()) {
-        std::filesystem::create_directories(p.parent_path());
-        std::ofstream out(p);
-        out << embedded;
+        QFileInfo fi2(p);
+        QDir dir = fi2.dir();
+        if (!dir.exists()) dir.mkpath(QStringLiteral("."));
+        QFile out(p);
+        if (out.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            out.write(QByteArray::fromStdString(embedded));
+            out.close();
+        }
     } else {
         ensureDefaults();
         save(p);

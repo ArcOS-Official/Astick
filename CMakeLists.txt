@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.6)
 
 set(CMAKE_AUTOMOC ON)
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_BUILD_TYPE "Debug")
+option(ASTICK_TESTS "Build with in-binary test/stress support" OFF)
 
 project(Astick
     VERSION 0.1
@@ -60,7 +61,18 @@ set(SOURCES
     src/decoration.cpp
     src/input/keyboard.cpp
     src/input/mouse.cpp
+    src/state_dump.cpp
+    src/stress.cpp
+    src/test_runner.cpp
+    src/resource_test.cpp
+    src/util_test.cpp
+    src/surfaces.h
+    src/input.h
+    src/animation.h
 )
+if(ASTICK_TESTS)
+    add_compile_definitions(ASTICK_ENABLE_TESTS)
+endif()
 add_executable(Astick
     ${SOURCES}
 )

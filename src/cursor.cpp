@@ -118,6 +118,10 @@ void cursor_handle_request_cursor(wl_listener *listener, void *data)
     }
 }
 
+CursorMode CursorManager::getMode() const { return cursorMode; }
+Toplevel *CursorManager::getGrabbed() const { return grabbedToplevel; }
+uint32_t CursorManager::getResizeEdges() const { return resizeEdges; }
+
 CursorManager::CursorManager(Compositor *comp)
 {
     compositor = comp;

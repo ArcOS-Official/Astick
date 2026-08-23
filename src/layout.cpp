@@ -4,6 +4,41 @@
 #include <algorithm>
 #include <limits>
 
+std::unique_ptr<LayoutManager::BspNode> LayoutManager::BspNode::makeLeaf(Toplevel *tl, BspNode *par) {
+    auto n = std::make_unique<BspNode>();
+    n->type = Type::Leaf;
+    n->toplevel = tl;
+    n->parent = par;
+    n->positioned = false;
+    return n;
+}
+
+std::unique_ptr<LayoutManager::BspNode> LayoutManager::BspNode::makeBranch(Orientation o, double r, std::unique_ptr<BspNode> l, std::unique_ptr<BspNode> rr, BspNode *par) {
+    auto n = std::make_unique<BspNode>();
+    n->type = Type::Branch;
+    n->orientation = o;
+    n->ratio = r;
+    n->left = std::move(l);
+    n->right = std::move(rr);
+    n->parent = par;
+    if (n->left) n->left->parent = n.get();
+    if (n->right) n->right->parent = n.get();
+    return n;
+}
+
+LayoutManager::Orientation LayoutManager::opposite(Orientation o) {
+    return o == Orientation::Horizontal ? Orientation::Vertical : Orientation::Horizontal;
+}
+
+void LayoutManager::setDefaultSplitRatio(double r) { defaultSplitRatio = r; }
+double LayoutManager::getDefaultSplitRatio() const { return defaultSplitRatio; }
+void LayoutManager::setOppositeOrientation(bool v) { oppositeOrientation = v; }
+bool LayoutManager::getOppositeOrientation() const { return oppositeOrientation; }
+void LayoutManager::setKeepRatioOnDrop(bool v) { keepRatioOnDrop = v; }
+bool LayoutManager::getKeepRatioOnDrop() const { return keepRatioOnDrop; }
+void LayoutManager::setMinRatio(double v) { minRatio = v; }
+void LayoutManager::setMaxRatio(double v) { maxRatio = v; }
+
 LayoutManager::LayoutManager()
     : QObject(nullptr)
 {
@@ -900,6 +935,49 @@ void LayoutManager::deactivateWorkspace(int workspace)
         wlr_scene_node_set_enabled(&ws->maximizedWindow->getSceneTree()->node, false);
 }
 
+namespace {
+struct BoxPair {
+    struct wlr_box first{};
+    struct wlr_box second{};
+};
+inline BoxPair splitBoxHorizontally(const struct wlr_box &box, double ratio) {
+    double rr = std::clamp(ratio, 0.0, 1.0);
+    int lw = (int)(box.width * rr);
+    int rw = box.width - lw;
+    struct wlr_box l{box.x, box.y, lw, box.height};
+    struct wlr_box rbox{box.x + lw, box.y, rw, box.height};
+    return {l, rbox};
+}
+inline BoxPair splitBoxVertically(const struct wlr_box &box, double ratio) {
+    double rr = std::clamp(ratio, 0.0, 1.0);
+    int th = (int)(box.height * rr);
+    int bh = box.height - th;
+    struct wlr_box t{box.x, box.y, box.width, th};
+    struct wlr_box b{box.x, box.y + th, box.width, bh};
+    return {t, b};
+}
+inline double distanceSquaredToBoxCenter(const struct wlr_box &box, double cx, double cy) {
+    double bx = box.x + box.width / 2.0;
+    double by = box.y + box.height / 2.0;
+    double dx = cx - bx;
+    double dy = cy - by;
+    return dx*dx + dy*dy;
+}
+inline struct wlr_box boxClosestToPoint(const struct wlr_box &a, const struct wlr_box &b, double cx, double cy) {
+    return distanceSquaredToBoxCenter(a, cx, cy) < distanceSquaredToBoxCenter(b, cx, cy) ? a : b;
+}
+inline int indexClosestToPoint(const struct wlr_box *boxes, int count, double cx, double cy) {
+    if (!boxes || count <= 0) return -1;
+    int best = 0;
+    double bestD = distanceSquaredToBoxCenter(boxes[0], cx, cy);
+    for (int i=1;i<count;i++) {
+        double d = distanceSquaredToBoxCenter(boxes[i], cx, cy);
+        if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+}
+} // anonymous box helpers — no heap, wlr_box by value, const wlr_box& by ref
+
 void LayoutManager::arrangeNode(BspNode *node, struct wlr_box box)
 {
     if (!node) return;
@@ -916,19 +994,13 @@ void LayoutManager::arrangeNode(BspNode *node, struct wlr_box box)
     }
     double r = std::clamp(node->ratio, minRatio, maxRatio);
     if (node->orientation == Orientation::Horizontal) {
-        int lw = (int)(box.width * r);
-        int rw = box.width - lw;
-        struct wlr_box lb = { box.x, box.y, lw, box.height };
-        struct wlr_box rb = { box.x + lw, box.y, rw, box.height };
-        arrangeNode(node->left.get(), lb);
-        arrangeNode(node->right.get(), rb);
+        auto p = splitBoxHorizontally(box, r);
+        arrangeNode(node->left.get(), p.first);
+        arrangeNode(node->right.get(), p.second);
     } else {
-        int th = (int)(box.height * r);
-        int bh = box.height - th;
-        struct wlr_box tb = { box.x, box.y, box.width, th };
-        struct wlr_box bb = { box.x, box.y + th, box.width, bh };
-        arrangeNode(node->left.get(), tb);
-        arrangeNode(node->right.get(), bb);
+        auto p = splitBoxVertically(box, r);
+        arrangeNode(node->left.get(), p.first);
+        arrangeNode(node->right.get(), p.second);
     }
 }
 

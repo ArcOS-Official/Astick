@@ -89,8 +89,7 @@ void onDestroy(struct wl_listener *listener, void *)
 }
 
 uint64_t Output::genId() {
-    uint64_t h = (uint64_t)(uintptr_t)output;
-    return ResourceKind::OutputBase + (h % ResourceKind::CountPerKind);
+    return allocateId(ResourceKind::OutputBase);
 }
 
 Output::Output(
@@ -128,6 +127,8 @@ struct wlr_output *Output::get() const
 {
     return output;
 }
+
+int Output::getWorkspace() const { return workspace; }
 
 void Output::setWorkspace(int ws)
 {

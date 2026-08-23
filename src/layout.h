@@ -7,7 +7,7 @@
 #include <memory>
 #include <vector>
 #include <optional>
-#include <qobject.h>
+#include <unordered_map>
 #include "wlroots.h"
 
 class Toplevel;
@@ -24,8 +24,8 @@ public:
     };
 
     enum class Orientation {
-        Horizontal, // side-by-side (split along x)
-        Vertical,   // stacked (split along y)
+        Horizontal,
+        Vertical,
     };
 
     struct BspNode {
@@ -40,30 +40,12 @@ public:
 
         // Branch
         Orientation orientation = Orientation::Horizontal;
-        double ratio = 0.5; // 0.1 .. 0.9
+        double ratio = 0.5;
         std::unique_ptr<BspNode> left;
         std::unique_ptr<BspNode> right;
 
-        static std::unique_ptr<BspNode> makeLeaf(Toplevel *tl, BspNode *par = nullptr) {
-            auto n = std::make_unique<BspNode>();
-            n->type = Type::Leaf;
-            n->toplevel = tl;
-            n->parent = par;
-            n->positioned = false;
-            return n;
-        }
-        static std::unique_ptr<BspNode> makeBranch(Orientation o, double r, std::unique_ptr<BspNode> l, std::unique_ptr<BspNode> rr, BspNode *par = nullptr) {
-            auto n = std::make_unique<BspNode>();
-            n->type = Type::Branch;
-            n->orientation = o;
-            n->ratio = r;
-            n->left = std::move(l);
-            n->right = std::move(rr);
-            n->parent = par;
-            if (n->left) n->left->parent = n.get();
-            if (n->right) n->right->parent = n.get();
-            return n;
-        }
+        static std::unique_ptr<BspNode> makeLeaf(Toplevel *tl, BspNode *par = nullptr);
+        static std::unique_ptr<BspNode> makeBranch(Orientation o, double r, std::unique_ptr<BspNode> l, std::unique_ptr<BspNode> rr, BspNode *par = nullptr);
     };
 
     LayoutManager();
@@ -73,11 +55,9 @@ public:
     Mode getWorkspaceLayoutMode(int workspace) const;
 
     void addWindow(Toplevel *toplevel, int workspace);
-    // BSP-aware add with focused hint, usable for root orientation, cursor for fallback
     void addWindow(Toplevel *toplevel, int workspace, Toplevel *focused, struct wlr_box usable, double cursorX = 0, double cursorY = 0);
     void prependWindow(Toplevel *toplevel, int workspace);
     void insertWindowAt(Toplevel *toplevel, int workspace, int index);
-    // BSP drop insertion: find leaf closest to cursor and split
     void insertWindowAtCursor(Toplevel *toplevel, int workspace, struct wlr_box usable, double cursorX, double cursorY, double ratioHint = -1);
     void removeWindow(Toplevel *toplevel);
     int getWindowWorkspace(Toplevel *toplevel) const;
@@ -92,7 +72,6 @@ public:
     void arrangeOthers(const struct wlr_box &usable, int workspace, Toplevel *excluded);
     bool updateWindowGeometry(Toplevel *toplevel, int x, int y, int width, int height);
 
-    // Floating-in-tiling support
     struct FloatingWindow {
         Toplevel *toplevel = nullptr;
         int x = 0, y = 0, width = 0, height = 0;
@@ -106,7 +85,6 @@ public:
     std::optional<struct wlr_box> getFloatingGeometry(Toplevel *toplevel) const;
     std::vector<Toplevel*> getFloatingWindows(int workspace) const;
 
-    // Fullscreen / maximize support (per-workspace, one window at a time)
     bool isFullscreen(Toplevel *toplevel) const;
     bool isMaximized(Toplevel *toplevel) const;
     bool setFullscreen(Toplevel *toplevel, bool fullscreen, struct wlr_box fullBox);
@@ -119,14 +97,12 @@ public:
     void activateWorkspace(int workspace);
     void deactivateWorkspace(int workspace);
 
-    // BSP operations
     bool toggleSplitOrientation(Toplevel *focused);
     bool toggleSplitOrientation(int workspace, Toplevel *focused);
     double getParentRatio(Toplevel *toplevel) const;
     bool setSplitRatio(Toplevel *toplevel, double ratio);
     bool handleResize(Toplevel *toplevel, struct wlr_box usable, double cursorX, double cursorY, uint32_t edges);
     bool commitResize(Toplevel *toplevel, struct wlr_box usable, uint32_t edges);
-    // Decoration helpers: retrieve current leaf geometry for a window (for border positioning)
     bool getWindowGeometry(Toplevel *toplevel, struct wlr_box &out) const;
     bool getWindowGeometry(Toplevel *toplevel, int workspace, struct wlr_box usable, struct wlr_box &out) const;
     std::unordered_map<Toplevel*, struct wlr_box> snapshotGeometries(int workspace) const;
@@ -134,22 +110,20 @@ public:
     void applyGeometries(const std::unordered_map<Toplevel*, struct wlr_box> &boxes);
     void setLeafGeometry(Toplevel *tl, const struct wlr_box &box);
 
-    // Configurables (tweakable)
-    void setDefaultSplitRatio(double r) { defaultSplitRatio = r; }
-    double getDefaultSplitRatio() const { return defaultSplitRatio; }
-    void setOppositeOrientation(bool v) { oppositeOrientation = v; }
-    bool getOppositeOrientation() const { return oppositeOrientation; }
-    void setKeepRatioOnDrop(bool v) { keepRatioOnDrop = v; }
-    bool getKeepRatioOnDrop() const { return keepRatioOnDrop; }
-    void setMinRatio(double v) { minRatio = v; }
-    void setMaxRatio(double v) { maxRatio = v; }
+    void setDefaultSplitRatio(double r);
+    double getDefaultSplitRatio() const;
+    void setOppositeOrientation(bool v);
+    bool getOppositeOrientation() const;
+    void setKeepRatioOnDrop(bool v);
+    bool getKeepRatioOnDrop() const;
+    void setMinRatio(double v);
+    void setMaxRatio(double v);
 
 private:
     struct Workspace {
         int id;
         Mode mode;
         std::unique_ptr<BspNode> root;
-        // For floating/mono fallback compatibility we still track order via root traversal
         std::vector<FloatingWindow> floating;
         Toplevel* fullscreenWindow = nullptr;
         Toplevel* maximizedWindow = nullptr;
@@ -159,7 +133,6 @@ private:
     QMap<int, int> workspaceRefs;
     int nextId = 1;
 
-    // tweakables
     double defaultSplitRatio = 0.5;
     bool oppositeOrientation = true;
     bool keepRatioOnDrop = true;
@@ -184,7 +157,6 @@ private:
     void applyDirectGeometry(Toplevel *tl, struct wlr_box box);
     void setEnabledForWorkspace(Workspace *ws, bool enabled);
 
-    // BSP helpers
     BspNode* findLeaf(BspNode *root, Toplevel *tl) const;
     BspNode* findLeafWithParent(BspNode *root, Toplevel *tl, BspNode **outParent) const;
     BspNode* findParentOfLeaf(BspNode *root, Toplevel *tl) const;
@@ -201,6 +173,6 @@ private:
     void arrangeNodeOthers(BspNode *node, struct wlr_box box, Toplevel *excluded);
     bool removeRecursive(std::unique_ptr<BspNode> &node, Toplevel *tl);
     bool replaceNode(std::unique_ptr<BspNode> &root, BspNode *target, std::unique_ptr<BspNode> replacement);
-    static Orientation opposite(Orientation o) { return o == Orientation::Horizontal ? Orientation::Vertical : Orientation::Horizontal; }
+    static Orientation opposite(Orientation o);
     void getAllBoxesRecursive(BspNode *node, struct wlr_box box, std::vector<std::pair<BspNode*, struct wlr_box>> &out) const;
 };
