@@ -18,7 +18,7 @@
 
 #include "cursor.h"
 #include "toplevel.h"
-#include "compositor.h"
+#include "engine/engine.h"
 #include "util.h"
 #include <algorithm>
 #include <print>
@@ -27,7 +27,7 @@ void cursor_handle_motion(wl_listener *listener, void *data)
 {
     CursorManager *self = wl_container_of(listener, self, motionListener);
     struct wlr_pointer_motion_event *event = (struct wlr_pointer_motion_event *)data;
-    Compositor *comp = self->compositor;
+    auto *comp = self->compositor;
     double dx = event->delta_x;
     double dy = event->delta_y;
     // Apply mouse speed multiplier for wayland pointers (libinput devices already have speed via libinput)
@@ -54,7 +54,7 @@ void cursor_handle_motion_absolute(wl_listener *listener, void *data)
     CursorManager *self = wl_container_of(listener, self, motionAbsoluteListener);
     struct wlr_pointer_motion_absolute_event *event =
         (struct wlr_pointer_motion_absolute_event *)data;
-    Compositor *comp = self->compositor;
+    auto *comp = self->compositor;
     wlr_cursor_warp_absolute(comp->getCursor(), &event->pointer->base,
         event->x, event->y);
     self->processMotion(event->time_msec);
@@ -64,7 +64,7 @@ void cursor_handle_button(wl_listener *listener, void *data)
 {
     CursorManager *self = wl_container_of(listener, self, buttonListener);
     struct wlr_pointer_button_event *event = (struct wlr_pointer_button_event *)data;
-    Compositor *comp = self->compositor;
+    auto *comp = self->compositor;
 
     wlr_seat_pointer_notify_button(comp->getSeat(),
         event->time_msec, event->button, event->state);
@@ -84,7 +84,7 @@ void cursor_handle_axis(wl_listener *listener, void *data)
 {
     CursorManager *self = wl_container_of(listener, self, axisListener);
     struct wlr_pointer_axis_event *event = (struct wlr_pointer_axis_event *)data;
-    Compositor *comp = self->compositor;
+    auto *comp = self->compositor;
     double delta = event->delta;
     int32_t delta_discrete = event->delta_discrete;
     if (comp->getConfig()) {
@@ -110,7 +110,7 @@ void cursor_handle_request_cursor(wl_listener *listener, void *data)
     CursorManager *self = wl_container_of(listener, self, requestCursorListener);
     struct wlr_seat_pointer_request_set_cursor_event *event =
         (struct wlr_seat_pointer_request_set_cursor_event *)data;
-    Compositor *comp = self->compositor;
+    auto *comp = self->compositor;
     struct wlr_seat_client *focused = comp->getSeat()->pointer_state.focused_client;
     if (focused == event->seat_client) {
         wlr_cursor_set_surface(comp->getCursor(), event->surface,
@@ -118,7 +118,7 @@ void cursor_handle_request_cursor(wl_listener *listener, void *data)
     }
 }
 
-CursorManager::CursorManager(Compositor *comp)
+CursorManager::CursorManager(astick::Engine *comp)
 {
     compositor = comp;
     signal(motionListener, &compositor->getCursor()->events.motion, cursor_handle_motion);

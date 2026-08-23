@@ -1,5 +1,5 @@
 #include "popup.h"
-#include "compositor.h"
+#include "engine/engine.h"
 #include "util.h"
 #include <cstdio>
 
@@ -37,7 +37,7 @@ uint64_t Popup::genId() {
 }
 
 Popup::Popup(
-    Compositor *server_,
+    astick::Engine *server_,
     struct wlr_xdg_popup *popup_
 )
 {

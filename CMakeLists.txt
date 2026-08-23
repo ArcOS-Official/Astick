@@ -43,7 +43,6 @@ add_compile_options(-Wall -Wextra -DWLR_USE_UNSTABLE -Wno-vla)
 
 set(SOURCES
     src/main.cpp
-    src/compositor.cpp
     src/toplevel.cpp
     src/popup.cpp
     src/layersurface.cpp
@@ -65,7 +64,6 @@ set(SOURCES
     src/state/pointer_state.cpp
     src/state/animation_manager.cpp
     src/engine/engine.cpp
-    src/engine/wl_listeners.cpp
     src/input/input_manager.cpp
     src/output/output_manager.cpp
 )

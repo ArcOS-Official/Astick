@@ -22,7 +22,7 @@
 
 #include "wlroots.h"
 
-class Compositor;
+namespace astick { class Engine; }
 
 class Popup : public Resource
 {
@@ -30,7 +30,7 @@ class Popup : public Resource
 public:
     uint64_t genId() override;
     Popup(
-        Compositor *server,
+        astick::Engine *server,
         struct wlr_xdg_popup *popup_
     );
     struct wlr_xdg_popup *get() const { return popup; }
@@ -44,7 +44,7 @@ signals:
     void closed();
 
 private:
-    Compositor *server;
+    astick::Engine *server;
     struct wlr_xdg_popup *popup;
     struct wl_listener commit;
     struct wl_listener destroy;

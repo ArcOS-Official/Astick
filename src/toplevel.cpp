@@ -17,7 +17,7 @@
 */
 
 #include "toplevel.h"
-#include "compositor.h"
+#include "engine/engine.h"
 #include "util.h"
 
 void handle_map(wl_listener *listener, void *)
@@ -54,12 +54,7 @@ void handle_destroy(wl_listener *listener, void *)
     wl_list_remove(&self->request_resize.link);
     wl_list_remove(&self->request_maximize.link);
     wl_list_remove(&self->request_fullscreen.link);
-    // Start close animation via compositor; full cleanup will happen when animation instance is destroyed
-    if (self->server) {
-        self->server->startCloseAnimation(self);
-        return;
-    }
-    // Fallback immediate destroy if no server
+    // Engine handles close animation via State commands; immediate destroy for now
     emit self->destroyed();
     self->destroyCloseSnapshot();
     delete self;
@@ -157,7 +152,7 @@ void Toplevel::destroyCloseSnapshot() {
 }
 
 Toplevel::Toplevel(
-    Compositor *server_,
+    astick::Engine *server_,
     struct wlr_xdg_toplevel *toplevel_,
     struct wlr_scene_tree *sceneTree_
 )

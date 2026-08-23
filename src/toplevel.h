@@ -21,7 +21,7 @@
 #include "resource.h"
 #include "wlroots.h"
 
-class Compositor;
+namespace astick { class Engine; }
 
 class Toplevel : public Resource
 {
@@ -29,13 +29,13 @@ class Toplevel : public Resource
 
 public:
     Toplevel(
-        Compositor *server,
+        astick::Engine *server,
         struct wlr_xdg_toplevel *toplevel,
         struct wlr_scene_tree *sceneTree
     );
     struct wlr_xdg_toplevel *get() const { return toplevel; }
     struct wlr_scene_tree *getSceneTree() const { return sceneTree; }
-    Compositor *getServer() const { return server; }
+    astick::Engine *getServer() const { return server; }
 
     uint64_t genId() override;
 
@@ -75,7 +75,7 @@ signals:
 private:
     struct wlr_xdg_toplevel *toplevel;
     struct wlr_scene_tree *sceneTree;
-    Compositor *server;
+    astick::Engine *server;
     struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener commit;

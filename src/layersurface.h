@@ -22,7 +22,7 @@
 
 #include "wlroots.h"
 
-class Compositor;
+namespace astick { class Engine; }
 
 class LayerSurface : public Resource
 {
@@ -30,7 +30,7 @@ class LayerSurface : public Resource
 public:
     uint64_t genId() override;
     LayerSurface(
-        Compositor *server,
+        astick::Engine *server,
         struct wlr_layer_surface_v1 *surface
     );
     struct wlr_layer_surface_v1 *get() const { return layer; }
@@ -49,7 +49,7 @@ signals:
     void destroyed();
 
 private:
-    Compositor *server;
+    astick::Engine *server;
     struct wlr_layer_surface_v1 *layer;
     struct wlr_scene_layer_surface_v1 *sceneLayer;
     struct wl_listener map;

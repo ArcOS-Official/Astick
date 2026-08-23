@@ -1,25 +1,37 @@
 #include "engine.h"
+#include "../compositor.h"
 #include "../util.h"
-#include <chrono>
-#include <poll.h>
-#include <sys/timerfd.h>
-#include <cstring>
+#include <QColor>
 
 namespace astick {
 
-// C listener shims — thin, zero-copy: just forward data ptr, no allocation.
-void engine_handle_newOutput(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newOutputListener); e->handleNewOutput(d); }
-void engine_handle_newToplevel(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newXdgToplevelListener); e->handleNewToplevel(d); }
-void engine_handle_newPopup(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newXdgPopupListener); e->handleNewPopup(d); }
-void engine_handle_newLayer(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newLayerListener); e->handleNewLayer(d); }
-void engine_handle_newInput(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, newInputListener); e->handleNewInput(d); }
-void engine_handle_setSelection(wl_listener* l, void* d){ Engine* e = wl_container_of(l, e, requestSetSelectionListener); e->handleRequestSetSelection(d); }
+void engine_handle_newOutput(wl_listener *l, void *d) { Engine *e = wl_container_of(l, e, newOutputListener_); e->handleNewOutput(l, d); }
+void engine_handle_newToplevel(wl_listener *l, void *d) { Engine *e = wl_container_of(l, e, newToplevelListener_); e->handleNewToplevel(l, d); }
+void engine_handle_newPopup(wl_listener *l, void *d) { Engine *e = wl_container_of(l, e, newPopupListener_); e->handleNewPopup(l, d); }
+void engine_handle_newLayer(wl_listener *l, void *d) { Engine *e = wl_container_of(l, e, newLayerListener_); e->handleNewLayer(l, d); }
+void engine_handle_newInput(wl_listener *l, void *d) { Engine *e = wl_container_of(l, e, newInputListener_); e->handleNewInput(l, d); }
+void engine_handle_setSelection(wl_listener *l, void *d) { Engine *e = wl_container_of(l, e, setSelectionListener_); e->handleSetSelection(l, d); }
 
-Engine::Engine(State& state_, Config& cfg_) : state(state_), cfg(cfg_) {}
+Engine::Engine(State &state, Config &config, QObject *parent)
+    : QObject(parent), state_(state), config_(config) {}
 
 Engine::~Engine() {
-    if (timerFd_ >= 0) close(timerFd_);
-    // Destruction order: scene, allocator, renderer, backend, display (reverse of init)
+    wl_display_destroy_clients(display_);
+    wl_list_remove(&newOutputListener_.link);
+    wl_list_remove(&newToplevelListener_.link);
+    wl_list_remove(&newPopupListener_.link);
+    wl_list_remove(&newLayerListener_.link);
+    wl_list_remove(&newInputListener_.link);
+    wl_list_remove(&setSelectionListener_.link);
+    delete cursorMgrObj_;
+    delete layout_;
+    qDeleteAll(outputs_);
+    qDeleteAll(toplevels_);
+    qDeleteAll(popups_);
+    qDeleteAll(layers_);
+    qDeleteAll(keyboards_);
+    qDeleteAll(mice_);
+    if (cursorMgr_) wlr_xcursor_manager_destroy(cursorMgr_);
     if (scene_) wlr_scene_node_destroy(&scene_->tree.node);
     if (cursor_) wlr_cursor_destroy(cursor_);
     if (allocator_) wlr_allocator_destroy(allocator_);
@@ -32,74 +44,108 @@ void Engine::init() {
     display_ = wl_display_create();
     loop_ = wl_display_get_event_loop(display_);
     backend_ = wlr_backend_autocreate(loop_, nullptr);
-    if (!backend_) { wlr_log(WLR_ERROR, "Engine: wlr_backend_autocreate failed"); return; }
-
     renderer_ = wlr_renderer_autocreate(backend_);
-    if (!renderer_) { wlr_log(WLR_ERROR, "Engine: wlr_renderer_autocreate failed"); return; }
     wlr_renderer_init_wl_display(renderer_, display_);
-
     allocator_ = wlr_allocator_autocreate(backend_, renderer_);
     wlr_compositor_create(display_, 5, renderer_);
     wlr_subcompositor_create(display_);
     wlr_data_device_manager_create(display_);
+    wlr_presentation_create(display_, backend_, 1);
 
     outputLayout_ = wlr_output_layout_create(display_);
     scene_ = wlr_scene_create();
-    if (scene_ && outputLayout_) sceneLayout_ = wlr_scene_attach_output_layout(scene_, outputLayout_);
+    sceneLayout_ = wlr_scene_attach_output_layout(scene_, outputLayout_);
+
+    for (int i = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; i <= ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY; ++i)
+        layerTrees[i] = wlr_scene_tree_create(&scene_->tree);
+    popupTree_ = wlr_scene_tree_create(&scene_->tree);
+    wlr_scene_node_place_below(&popupTree_->node, &layerTrees[ZWLR_LAYER_SHELL_V1_LAYER_TOP]->node);
 
     xdgShell_ = wlr_xdg_shell_create(display_, 3);
     layerShell_ = wlr_layer_shell_v1_create(display_, 5);
     cursor_ = wlr_cursor_create();
-    if (cursor_ && outputLayout_) wlr_cursor_attach_output_layout(cursor_, outputLayout_);
+    wlr_cursor_attach_output_layout(cursor_, outputLayout_);
+    cursorMgr_ = wlr_xcursor_manager_create(nullptr, 24);
+    wlr_xcursor_manager_load(cursorMgr_, 1);
     seat_ = wlr_seat_create(display_, "seat0");
 
-    // Install listeners — they only enqueue via public field fills (no handling)
-    signal(newOutputListener, &backend_->events.new_output, engine_handle_newOutput);
-    signal(newXdgToplevelListener, &xdgShell_->events.new_toplevel, engine_handle_newToplevel);
-    signal(newXdgPopupListener, &xdgShell_->events.new_popup, engine_handle_newPopup);
-    signal(newLayerListener, &layerShell_->events.new_surface, engine_handle_newLayer);
-    signal(requestSetSelectionListener, &seat_->events.request_set_selection, engine_handle_setSelection);
-    signal(newInputListener, &backend_->events.new_input, engine_handle_newInput);
+    cursorMgrObj_ = nullptr;
 
-    timerFd_ = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    // wlEnqueued reserve to avoid per-frame alloc
-    wlEnqueued_.reserve(32);
-    wlr_log(WLR_INFO, "Engine::init stale until hookState()");
+    layout_ = new LayoutManager();
+    layout_->setDefaultSplitRatio(config_.bsp.split_ratio);
+    layout_->setOppositeOrientation(config_.bsp.opposite_orientation);
+    layout_->setKeepRatioOnDrop(config_.bsp.keep_ratio_on_drop);
+    layout_->setMinRatio(config_.bsp.min_ratio);
+    layout_->setMaxRatio(config_.bsp.max_ratio);
+
+    animManager_ = new ::AnimationManager(this);
+    animPool_ = new AnimationPool(&config_, this);
+    animManager_->setEnabled(config_.animations.enabled);
+    animManager_->setGlobalSpeed(config_.animations.speed);
+    animPool_->setConfig(&config_);
+    connect(animPool_, &AnimationPool::frameRequested, this, &Engine::scheduleAllOutputs);
+
+    DecorationConfig decCfg;
+    decCfg.border.enabled = config_.decorations.border.enabled;
+    decCfg.border.width = config_.decorations.border.width;
+    decCfg.border.radius = config_.decorations.border.radius;
+    decorManager_ = new DecorationManager(decCfg, animManager_, this);
+
+    pendingEvents_.reserve(32);
+
+    signal(newOutputListener_, &backend_->events.new_output, engine_handle_newOutput);
+    signal(newToplevelListener_, &xdgShell_->events.new_toplevel, engine_handle_newToplevel);
+    signal(newPopupListener_, &xdgShell_->events.new_popup, engine_handle_newPopup);
+    signal(newLayerListener_, &layerShell_->events.new_surface, engine_handle_newLayer);
+    signal(newInputListener_, &backend_->events.new_input, engine_handle_newInput);
+    signal(setSelectionListener_, &seat_->events.request_set_selection, engine_handle_setSelection);
+
+    wlr_log(WLR_INFO, "Engine initialized");
 }
 
 void Engine::hookState() {
-    hooked = true;
-    // Now state.handle will be called from run()
-    state.addCommandReceiver(this);
-    state.addEventSource(this);
-    wlr_log(WLR_INFO, "Engine::hookState ready");
+    hooked_ = true;
+    state_.addCommandReceiver(this);
+    state_.addEventSource(this);
+}
+
+int Engine::run() {
+    if (!hooked_) {
+        wlr_log(WLR_ERROR, "Engine::run before hookState");
+        return 1;
+    }
+    socket_ = QString::fromUtf8(wl_display_add_socket_auto(display_));
+    if (socket_.isEmpty()) {
+        wlr_log(WLR_ERROR, "Engine: failed to create socket");
+        return 1;
+    }
+    setenv("WAYLAND_DISPLAY", socket_.toUtf8().constData(), true);
+    wlr_log(WLR_INFO, "Engine running on %s", socket_.toUtf8().constData());
+    if (!wlr_backend_start(backend_)) {
+        wlr_log(WLR_ERROR, "Engine: backend start failed");
+        return 1;
+    }
+    wl_display_run(display_);
+    return 0;
 }
 
 std::vector<VariantEvent> Engine::poll() {
     std::vector<VariantEvent> out;
-    out.reserve(wlEnqueued_.size() + 4);
-    // Move wlEnqueued without copying extra: wlEnqueued already holds VariantEvents
-    // which were emplaced via move of live instances.
-    for (auto& ev : wlEnqueued_) out.emplace_back(std::move(ev));
-    wlEnqueued_.clear();
-
-    // Also emit live Keyboard/Pointer if they haveEvent — move via emplace
-    if (kb_.hasEvent) { out.emplace_back(kb_); }
-    if (ptr_.hasEvent) { out.emplace_back(ptr_); }
-    if (win_.hasEvent) { out.emplace_back(win_); }
-    if (animTick_.hasEvent) { out.emplace_back(animTick_); }
-    if (outEv_.hasEvent) { out.emplace_back(outEv_); }
-    return out; // NRVO
+    out.reserve(pendingEvents_.size());
+    for (auto &ev : pendingEvents_) out.emplace_back(std::move(ev));
+    pendingEvents_.clear();
+    return out;
 }
 
-void Engine::onCommand(const VariantCommand& cmd) {
-    // Visitor takes const& — no copy of variant. Dispatch without heap.
-    // Zero-copy: each lambda takes const& and covers exactly one variant alternative.
+void Engine::onCommand(const VariantCommand &cmd) {
     std::visit(Overloaded{
-        [this](const Cmd::SetWindowBox& c){ applySetWindowBox(c); },
-        [this](const Cmd::SetWindowActivated& c){ applySetWindowActivated(c); },
-        [this](const Cmd::SetWindowOpacity& c){ applySetWindowOpacity(c); },
-        [this](const Cmd::RequestFrame& c){ applyRequestFrame(c); },
+        [this](const Cmd::SetWindowBox &c){ applySetWindowBox(c); },
+        [this](const Cmd::SetWindowActivated &c){ applySetWindowActivated(c); },
+        [this](const Cmd::SetWindowOpacity &){},
+        [this](const Cmd::RequestFrame &c){
+            for (auto *o : outputs_) if (o->get()) wlr_output_schedule_frame(o->get());
+            Q_UNUSED(c);
+        },
         [](const Cmd::CreateSnapshot&){},
         [](const Cmd::DestroySnapshot&){},
         [](const Cmd::SetWorkspace&){},
@@ -107,132 +153,262 @@ void Engine::onCommand(const VariantCommand& cmd) {
     }, cmd);
 }
 
-void Engine::applySetWindowBox(const Cmd::SetWindowBox& c) {
-    // Find wlr_scene node by WindowId -> scene tree. For now stub: log.
-    // Real impl looks up wlr_scene_tree from WindowId map and does set_position/set_size.
-    // Zero-copy: Box passed as const& (trivial) and applied directly.
-    (void)c;
-    // Example: wlr_scene_node_set_position(&tree->node, c.box.x, c.box.y);
-    // wlr_xdg_toplevel_set_size(toplevel, c.box.width, c.box.height);
+void Engine::applySetWindowBox(const Cmd::SetWindowBox &c) {
+    auto it = windowMap_.find(c.id);
+    if (it == windowMap_.end()) return;
+    Toplevel *tl = it->second;
+    if (!tl || !tl->getSceneTree()) return;
+    wlr_scene_node_set_position(&tl->getSceneTree()->node, c.box.x, c.box.y);
+    wlr_xdg_toplevel_set_size(tl->get(), c.box.width, c.box.height);
+    if (auto *dec = decorManager_->decorationFor(tl))
+        dec->updateGeometry(c.box.x, c.box.y, c.box.width, c.box.height);
 }
 
-void Engine::applySetWindowActivated(const Cmd::SetWindowActivated& c) {
-    (void)c;
-    // wlr_xdg_toplevel_set_activated(tl, c.active);
+void Engine::applySetWindowActivated(const Cmd::SetWindowActivated &c) {
+    auto it = windowMap_.find(c.id);
+    if (it == windowMap_.end()) return;
+    wlr_xdg_toplevel_set_activated(it->second->get(), c.active);
 }
 
-void Engine::applySetWindowOpacity(const Cmd::SetWindowOpacity& c) {
-    (void)c;
-    // wlr_scene_buffer_set_opacity(buffer, c.opacity);
+void Engine::handleNewOutput(wl_listener *, void *data) {
+    auto *wout = static_cast<wlr_output*>(data);
+    onOutputAdded(wout);
+    OutputEv ev;
+    ev.outputSerial = (uint32_t)nextWindowId_++;
+    ev.usable = Box{0,0,wout->width,wout->height};
+    ev.full = ev.usable;
+    ev.hasEvent = true;
+    pendingEvents_.emplace_back(std::move(ev));
+    state_.handle(pendingEvents_.back());
 }
 
-void Engine::applyRequestFrame(const Cmd::RequestFrame& c) {
-    (void)c;
-    // Iterate outputs and schedule frame for matching serial
-    // wlr_output_schedule_frame(output);
+void Engine::handleNewToplevel(wl_listener *, void *data) {
+    auto *xdg = static_cast<wlr_xdg_toplevel*>(data);
+    onToplevelAdded(xdg);
 }
 
-int Engine::run() {
-    if (!hooked) { wlr_log(WLR_ERROR, "Engine::run called before hookState"); return 1; }
-    if (!wlr_backend_start(backend_)) { wlr_log(WLR_ERROR, "Engine: wlr_backend_start failed"); return 1; }
+void Engine::handleNewPopup(wl_listener *, void *data) {
+    auto *popup = static_cast<wlr_xdg_popup*>(data);
+    onPopupAdded(popup);
+}
 
-    int wlFd = wl_display_get_fd(display_);
-    // libinput fd via backend (if available)
-    int libinputFd = -1;
-#ifdef WLR_HAS_LIBINPUT_BACKEND
-    // Not all backends expose libinput fd; use -1 if unavailable
-#endif
+void Engine::handleNewLayer(wl_listener *, void *data) {
+    auto *layer = static_cast<wlr_layer_surface_v1*>(data);
+    onLayerAdded(layer);
+}
 
-    // Arm timerFd for initial tick
-    // Compute timeout = next anim wakeup or -1
-    while (!shouldTerminate) {
-        // 0. Reset all per-frame public fields — guarantee stale never leaks
-        kb_.reset(); ptr_.reset(); win_.reset(); animTick_.reset(); outEv_.reset();
-        wlEnqueued_.clear();
+void Engine::handleNewInput(wl_listener *, void *data) {
+    auto *device = static_cast<wlr_input_device*>(data);
+    onInputAdded(device);
+}
 
-        int timeoutMs = state.nextWakeupMs(); // may be -1
-        pollfd fds[3];
-        int nfds = 0;
-        fds[nfds++] = pollfd{wlFd, POLLIN, 0};
-        if (libinputFd >= 0) fds[nfds++] = pollfd{libinputFd, POLLIN, 0};
-        if (timerFd_ >= 0) fds[nfds++] = pollfd{timerFd_, POLLIN, 0};
+void Engine::handleSetSelection(wl_listener *, void *data) {
+    auto *event = static_cast<wlr_seat_request_set_selection_event*>(data);
+    onSetSelection(event);
+}
 
-        int ret = ::poll(fds, nfds, timeoutMs);
-        if (ret < 0 && errno != EINTR) { wlr_log(WLR_ERROR, "Engine poll failed %s", strerror(errno)); break; }
+void Engine::onOutputAdded(wlr_output *wout) {
+    wlr_output_init_render(wout, allocator_, renderer_);
+    std::string oid = Config::outputId(wout);
+    wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, true);
+    if (auto *mode = wlr_output_preferred_mode(wout)) wlr_output_state_set_mode(&state, mode);
+    wlr_output_commit_state(wout, &state);
+    wlr_output_state_finish(&state);
 
-        // Dispatch clients if wlFd ready
-        for (int i=0;i<nfds;i++) if (fds[i].revents & POLLIN) {
-            if (fds[i].fd == wlFd) {
-                wl_display_flush_clients(display_);
-                // dispatch pending wayland events — listeners will fill kb/ptr/win fields
-                // In real wlroots, wlr_backend_dispatch handles libinput; we call both
-                // For minimal stub we just dispatch clients; backend events drive via libinputFd
-            } else if (fds[i].fd == timerFd_) {
-                uint64_t v; (void)read(timerFd_, &v, sizeof(v));
+    auto *out = new ::Output(wout, renderer_, allocator_, scene_);
+    outputs_.append(out);
+    connect(out, &Output::frameReady, animPool_, &AnimationPool::onFrame);
+
+    auto *lout = wlr_output_layout_add_auto(outputLayout_, wout);
+    auto *sout = wlr_scene_output_create(scene_, wout);
+    wlr_scene_output_layout_add_output(sceneLayout_, lout, sout);
+
+    layout_->activateWorkspace(out->getWorkspace());
+    rearrangeTiled();
+}
+
+void Engine::onToplevelAdded(wlr_xdg_toplevel *xdg) {
+    auto *tree = wlr_scene_xdg_surface_create(&scene_->tree, xdg->base);
+    wlr_scene_node_place_below(&tree->node, &popupTree_->node);
+    auto *tl = new ::Toplevel(this, xdg, tree);
+    WindowId wid = nextWindowId_++;
+    windowMap_[wid] = tl;
+    toplevels_.append(tl);
+    if (decorManager_) decorManager_->createFor(tl);
+
+    Window ev;
+    ev.id = wid;
+    ev.kind = Window::Kind::Mapped;
+    ev.hasEvent = true;
+    pendingEvents_.emplace_back(std::move(ev));
+    state_.handle(pendingEvents_.back());
+
+    connect(tl, &Toplevel::mapped, this, [this, tl, wid]() {
+        Window e; e.id = wid; e.kind = Window::Kind::Mapped; e.hasEvent = true;
+        pendingEvents_.emplace_back(std::move(e));
+        state_.handle(pendingEvents_.back());
+        focusToplevel(tl);
+        int ws = outputs_.isEmpty() ? 1 : outputs_.first()->getWorkspace();
+        if (!outputs_.isEmpty()) {
+            wlr_box usable = usableAreaForOutput(outputs_.first()->get());
+            layout_->addWindow(tl, ws);
+            arrangeForOutput(outputs_.first());
+        }
+    });
+    connect(tl, &Toplevel::unmapped, this, [this, tl, wid]() {
+        Window e; e.id = wid; e.kind = Window::Kind::Unmapped; e.hasEvent = true;
+        pendingEvents_.emplace_back(std::move(e));
+        state_.handle(pendingEvents_.back());
+    });
+    connect(tl, &Toplevel::destroyed, this, [this, tl, wid]() {
+        Window e; e.id = wid; e.kind = Window::Kind::Destroy; e.hasEvent = true;
+        pendingEvents_.emplace_back(std::move(e));
+        state_.handle(pendingEvents_.back());
+        toplevels_.removeOne(tl);
+        windowMap_.erase(wid);
+        layout_->removeWindow(tl);
+        rearrangeTiled();
+        if (decorManager_) decorManager_->removeFor(tl);
+        delete tl;
+    });
+}
+
+void Engine::onPopupAdded(wlr_xdg_popup *xdg) {
+    auto *popup = new ::Popup(this, xdg);
+    popups_.append(popup);
+    connect(popup, &Popup::destroyed, this, [this, popup]() { popups_.removeOne(popup); });
+}
+
+void Engine::onLayerAdded(wlr_layer_surface_v1 *surface) {
+    if (!surface->output && !outputs_.isEmpty()) surface->output = outputs_.first()->get();
+    auto *layer = new ::LayerSurface(this, surface);
+    layers_.append(layer);
+    connect(layer, &LayerSurface::destroyed, this, [this, layer]() { layers_.removeOne(layer); });
+}
+
+void Engine::onSetSelection(wlr_seat_request_set_selection_event *event) {
+    wlr_seat_set_selection(seat_, event->source, event->serial);
+}
+
+void Engine::onInputAdded(wlr_input_device *device) {
+    if (device->type == WLR_INPUT_DEVICE_KEYBOARD) addKeyboard(device);
+    else if (device->type == WLR_INPUT_DEVICE_POINTER) addMouse(device);
+    uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
+    if (!keyboards_.isEmpty()) caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+    wlr_seat_set_capabilities(seat_, caps);
+}
+
+void Engine::addKeyboard(wlr_input_device *device) {
+    auto *kb = new ::Keyboard(device, seat_);
+    if (config_.keyboard.layouts.size()) kb->applyConfig(config_.keyboard);
+    keyboards_.append(kb);
+    connect(kb, &::Keyboard::keyPressed, this, [this, kb](wlr_keyboard_key_event *event) {
+        uint32_t keycode = event->keycode + 8;
+        const xkb_keysym_t *syms; int nsyms = xkb_state_key_get_syms(kb->getKeyboard()->xkb_state, keycode, &syms);
+        uint32_t mods = wlr_keyboard_get_modifiers(kb->getKeyboard());
+        if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+            for (int i=0;i<nsyms;i++) {
+                if (auto *bind = config_.findKeybind(mods, syms[i])) {
+                    if (bind->action=="quit") wl_display_terminate(display_);
+                    else if (bind->action=="focus_prev" && toplevels_.size()>=2) focusToplevel(toplevels_.last());
+                    else if (bind->action=="focus_next" && !toplevels_.isEmpty()) focusToplevel(toplevels_.first());
+                }
             }
         }
-        // Even if no fd, we still need to drain backend/libinput
-        // wlr_backend_dispatch(backend_); // would fill kb/ptr via listeners
+        Keyboard ev;
+        ev.keycode = keycode; ev.keysym = nsyms?syms[0]:0; ev.mods = mods;
+        ev.pressed = event->state==WL_KEYBOARD_KEY_STATE_PRESSED;
+        ev.hasEvent = true;
+        pendingEvents_.emplace_back(std::move(ev));
+        state_.handle(pendingEvents_.back());
+    });
+}
 
-        // 3. Drain Engine's own queue + EventSources
-        auto evs = this->poll();
-        for (auto* src : std::vector<EventSource*>{}) { (void)src; } // placeholder: state.sources polled via State
-        // Actually Engine is also an EventSource; AnimationManager polls via State sources
-        // For correctness, ask State for sources
-        // But to avoid copy, we iterate state's sources directly (friend or accessor needed)
-        // Simplified: poll AnimationManager via state (we've already hooked)
-        // So we collect from state sources by calling state.handle loop below after polling them
-        // For this stub, we just handle evs from Engine itself
-        for (auto& srcEv : evs) state.handle(srcEv);
-        // Poll other sources (e.g., AnimationManager) — they push commands directly, but also produce ticks
-        // In full impl we would: for (auto* s : state.sources) { auto more = s->poll(); for (auto& e: more) state.handle(e); }
+void Engine::addMouse(wlr_input_device *device) {
+    auto *mouse = new ::Mouse(device);
+    mice_.append(mouse);
+    wlr_cursor_attach_input_device(cursor_, device);
+}
 
-        auto cmds = state.drainCommands(); // move, no copy
-        for (const auto& c : cmds) this->onCommand(c);
-
-        if (state.needsFrame()) {
-            if (timerFd_ >= 0) {
-                itimerspec ts{};
-                ts.it_value.tv_nsec = 1000000 * (1000 / (state.nextWakeupMs() >0 ? state.nextWakeupMs() : 16));
-                timerfd_settime(timerFd_, 0, &ts, nullptr);
-            }
-            wl_display_flush_clients(display_);
-            state.setNeedsFrame(false);
-        }
-
-        // Check for termination request via command or signal
-        if (wl_display_get_event_loop(display_) == nullptr) break; // stub
+void Engine::focusToplevel(Toplevel *tl) {
+    if (!tl) return;
+    auto *surface = tl->get()->base->surface;
+    if (seat_->keyboard_state.focused_surface == surface) return;
+    if (auto *prev = seat_->keyboard_state.focused_surface) {
+        if (auto *p = wlr_xdg_toplevel_try_from_wlr_surface(prev)) wlr_xdg_toplevel_set_activated(p, false);
     }
-    return 0;
+    wlr_scene_node_place_below(&tl->getSceneTree()->node, &popupTree_->node);
+    toplevels_.removeOne(tl); toplevels_.prepend(tl);
+    wlr_xdg_toplevel_set_activated(tl->get(), true);
+    layout_->raiseWindow(tl);
+    if (auto *kb = wlr_seat_get_keyboard(seat_)) {
+        wlr_seat_keyboard_notify_enter(seat_, surface, kb->keycodes, kb->num_keycodes, &kb->modifiers);
+    }
+    state_.emitCommand(Cmd::SetWindowActivated{*reinterpret_cast<WindowId*>(&tl), true});
 }
 
-void Engine::handleNewOutput(void* data) {
-    (void)data;
-    // Fill OutputEv live instance directly (zero-copy field write)
-    outEv_.outputSerial = (uint32_t)nextWindowId_++; // reuse counter for serial
-    outEv_.usable = Box{0,0,1920,1080};
-    outEv_.full = outEv_.usable;
-    outEv_.hasEvent = true;
-    wlEnqueued_.emplace_back(outEv_); // copy of small struct (32 bytes) — acceptable; could emplace via move
-    outEv_.reset(); // reset after emplace to avoid double deliver? But we keep hasEvent for poll() — alternative: clear after
-    // Actually we already emplaced copy, so we can keep live cleared; but we set hasEvent false via reset, and poll will not duplicate
-    // So we should not rely on poll() duplicating; we already enqueued.
-    // To avoid double, we cleared live.
+Output *Engine::outputForToplevel(Toplevel *tl) {
+    if (outputs_.isEmpty()) return nullptr;
+    if (tl && layout_) {
+        int ws = layout_->getWindowWorkspace(tl);
+        for (auto *o: outputs_) if (o->getWorkspace()==ws) return o;
+    }
+    if (cursor_ && outputLayout_) {
+        if (auto *wout = wlr_output_layout_output_at(outputLayout_, cursor_->x, cursor_->y))
+            for (auto *o: outputs_) if (o->get()==wout) return o;
+    }
+    return outputs_.first();
 }
 
-void Engine::handleNewToplevel(void* data) {
-    (void)data;
-    Window w;
-    w.id = (WindowId)nextWindowId_++;
-    w.kind = Window::Kind::Mapped;
-    w.hasEvent = true;
-    // Stable key: hash app_id via string_view — zero copy
-    // const char* app_id = xdg_toplevel->app_id; if (app_id) stable = stableKeyFromAppId(app_id);
-    wlEnqueued_.emplace_back(std::move(w));
+wlr_box Engine::usableAreaForOutput(wlr_output *wout) {
+    wlr_box full{0,0,0,0};
+    if (outputLayout_ && wout) wlr_output_layout_get_box(outputLayout_, wout, &full);
+    if (full.width==0) full = {0,0,wout->width,wout->height};
+    wlr_box usable = full;
+    for (auto *ls: layers_) {
+        auto *l = ls->get();
+        if (l->output!=wout || !l->surface->mapped || l->current.exclusive_zone<=0) continue;
+        uint32_t anchor = l->current.exclusive_edge ? l->current.exclusive_edge : l->current.anchor;
+        if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) { usable.y+=l->current.exclusive_zone; usable.height-=l->current.exclusive_zone; }
+        else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) usable.height-=l->current.exclusive_zone;
+        if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) { usable.x+=l->current.exclusive_zone; usable.width-=l->current.exclusive_zone; }
+        else if (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) usable.width-=l->current.exclusive_zone;
+    }
+    return usable;
 }
 
-void Engine::handleNewPopup(void* ) {}
-void Engine::handleNewLayer(void* ) {}
-void Engine::handleNewInput(void* ) {}
-void Engine::handleRequestSetSelection(void* ) {}
+wlr_box Engine::fullAreaForOutput(wlr_output *wout) {
+    wlr_box full{0,0,0,0};
+    if (outputLayout_ && wout) wlr_output_layout_get_box(outputLayout_, wout, &full);
+    if (full.width==0) full={0,0,wout->width,wout->height};
+    return full;
+}
+
+void Engine::arrangeForOutput(Output *out) {
+    if (!out) return;
+    wlr_box usable = usableAreaForOutput(out->get());
+    wlr_box full = fullAreaForOutput(out->get());
+    layout_->arrange(usable, full, out->getWorkspace());
+}
+
+void Engine::rearrangeTiled() {
+    for (auto *o: outputs_) arrangeForOutput(o);
+}
+
+void Engine::scheduleAllOutputs() {
+    for (auto *o: outputs_) if (o->get()) wlr_output_schedule_frame(o->get());
+}
+
+wlr_box Engine::boxForStyle(AnimationStyle, const wlr_box &b, bool) { return b; }
+
+void Engine::setInitialLayoutMode(const QString &mode) {
+    QString m = mode.toLower().trimmed();
+    LayoutManager::Mode lm = LayoutManager::Mode::Tiling;
+    if (m == "floating") lm = LayoutManager::Mode::Floating;
+    else if (m == "monowindow") lm = LayoutManager::Mode::MonoWindow;
+    if (layout_) layout_->setWorkspaceLayoutMode(1, lm);
+}
+
 } // namespace astick

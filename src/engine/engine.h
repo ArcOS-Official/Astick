@@ -1,101 +1,144 @@
 #pragma once
-// Sole wlroots include — no other file in src/state/* includes this.
+#include <QObject>
+#include <QList>
+#include <QString>
 #include "../wlroots.h"
+#include "../config.h"
+#include "../layout.h"
+#include "../output.h"
+#include "../toplevel.h"
+#include "../popup.h"
+#include "../layersurface.h"
+#include "../cursor.h"
+#include "../input/keyboard.h"
+#include "../input/mouse.h"
+#include "../animation.h"
+#include "../animation_pool.h"
+#include "../decoration.h"
 #include "../state/state.h"
 #include "../state/event.h"
 #include "../state/command.h"
-#include "../config.h"
-#include <poll.h>
-#include <sys/timerfd.h>
-#include <unistd.h>
-#include <unordered_map>
 
 namespace astick {
 
-// Engine owns all wlr_* memory and is stale until hookState().
-// Zero-copy: holds live event instances (kb/ptr/win/anim/out) and
-// fills their public fields directly from wl_listeners — no new/delete
-// per event. poll() moves them into VariantEvent via emplace.
-
-class Engine : public EventSource, public CommandReceiver {
+class Engine : public QObject, public CommandReceiver, public EventSource {
+    Q_OBJECT
 public:
-    Engine(State& state, Config& cfg);
+    explicit Engine(State &state, Config &config, QObject *parent = nullptr);
     ~Engine() override;
 
-    // Create wl_display, backend, renderer, allocator, scene, seat, etc.
-    // Installs wl_listeners that enqueue by filling public fields (no alloc).
     void init();
+    void hookState();
+    int run();
 
-    void hookState(); // stale -> ready, after State wiring
-    int run(); // custom loop — replaces wl_event_loop dispatch
-
-    // EventSource impl — drains internal wlEnqueued queue filled by wl_listeners
     std::vector<VariantEvent> poll() override;
     std::optional<int> nextWakeupMs() const override { return std::nullopt; }
+    void onCommand(const VariantCommand &cmd) override;
 
-    // CommandReceiver impl — applies to wlr_scene / wlr_xdg_toplevel
-    void onCommand(const VariantCommand& cmd) override;
+    wlr_scene *scene() const { return scene_; }
+    wlr_output_layout *outputLayout() const { return outputLayout_; }
+    wlr_seat *seat() const { return seat_; }
+    wlr_cursor *cursor() const { return cursor_; }
+    wl_display *display() const { return display_; }
+    LayoutManager *layout() const { return layout_; }
 
-    // Accessors for listeners
-    State& getState() noexcept { return state; }
-    struct wl_display* display() const noexcept { return display_; }
-    struct wlr_backend* backend() const noexcept { return backend_; }
+    // Compatibility aliases for old Compositor API used by Toplevel/Popup/LayerSurface/Cursor
+    wlr_seat *getSeat() const { return seat_; }
+    wlr_scene *getScene() const { return scene_; }
+    wlr_output_layout *getOutputLayout() const { return outputLayout_; }
+    wlr_scene_tree *getLayerTree(uint32_t l) const { return layerTrees[l]; }
+    wlr_scene_tree *getPopupTree() const { return popupTree_; }
+    QList<::Output*>& getOutputs() { return outputs_; }
+    QList<::Toplevel*>& getToplevels() { return toplevels_; }
+    wlr_cursor *getCursor() const { return cursor_; }
+    wlr_xcursor_manager *getCursorMgr() const { return cursorMgr_; }
+    Config *getConfig() { return &config_; }
+    LayoutManager *getLayout() { return layout_; }
+    ::AnimationManager *getAnimationManager() { return animManager_; }
+    ::DecorationManager *getDecorationManager() { return decorManager_; }
+    void startCloseAnimation(::Toplevel*) {}
+    void setInitialLayoutMode(const QString &mode);
+
+    void focusToplevel(::Toplevel *t);
+    ::Output *outputForToplevel(::Toplevel *t);
+    struct wlr_box usableAreaForOutput(wlr_output *output);
+    struct wlr_box fullAreaForOutput(wlr_output *output);
+    void rearrangeTiled();
+    void arrangeForOutput(::Output *out);
+
+signals:
+    void ready();
+
+private slots:
+    void onOutputAdded(struct wlr_output *output);
+    void onToplevelAdded(struct wlr_xdg_toplevel *toplevel);
+    void onPopupAdded(struct wlr_xdg_popup *popup);
+    void onLayerAdded(struct wlr_layer_surface_v1 *surface);
+    void onSetSelection(wlr_seat_request_set_selection_event *event);
+    void onInputAdded(wlr_input_device *device);
 
 private:
-    State& state;
-    Config& cfg;
-    bool hooked = false;
-    bool shouldTerminate = false;
+    void addKeyboard(struct wlr_input_device *device);
+    void addMouse(struct wlr_input_device *device);
+    void scheduleAllOutputs();
 
-    // wlroots owned — unique ownership, freed in ~Engine
-    struct wl_display* display_ = nullptr;
-    struct wl_event_loop* loop_ = nullptr; // kept for compatibility but not driven via wl_display_run
-    struct wlr_backend* backend_ = nullptr;
-    struct wlr_renderer* renderer_ = nullptr;
-    struct wlr_allocator* allocator_ = nullptr;
-    struct wlr_scene* scene_ = nullptr;
-    struct wlr_scene_output_layout* sceneLayout_ = nullptr;
-    struct wlr_output_layout* outputLayout_ = nullptr;
-    struct wlr_xdg_shell* xdgShell_ = nullptr;
-    struct wlr_layer_shell_v1* layerShell_ = nullptr;
-    struct wlr_cursor* cursor_ = nullptr;
-    struct wlr_seat* seat_ = nullptr;
+    struct wlr_box boxForStyle(AnimationStyle style, const wlr_box &finalBox, bool isStart);
 
-    // Live per-frame event classes — Engine is sole writer, resets each loop top
-    Keyboard kb_;
-    Pointer ptr_;
-    Window win_;
-    AnimTick animTick_;
-    OutputEv outEv_;
-    // Per-frame queue of Window events (multiple commits in one frame)
-    std::vector<VariantEvent> wlEnqueued_;
-    std::unordered_map<struct wlr_output*, uint32_t> outputSerials_;
+    State &state_;
+    Config &config_;
+    bool hooked_ = false;
 
-    int nextWindowId_ = 1;
-    int nextAnimId_ = 1;
-    int timerFd_ = -1;
+    wl_display *display_ = nullptr;
+    wl_event_loop *loop_ = nullptr;
+    wlr_backend *backend_ = nullptr;
+    wlr_renderer *renderer_ = nullptr;
+    wlr_allocator *allocator_ = nullptr;
+    wlr_scene *scene_ = nullptr;
+    wlr_scene_output_layout *sceneLayout_ = nullptr;
+    wlr_output_layout *outputLayout_ = nullptr;
+    wlr_xdg_shell *xdgShell_ = nullptr;
+    wlr_layer_shell_v1 *layerShell_ = nullptr;
+    wlr_scene_tree *layerTrees[4] = {};
+    wlr_scene_tree *popupTree_ = nullptr;
+    wlr_cursor *cursor_ = nullptr;
+    wlr_xcursor_manager *cursorMgr_ = nullptr;
+    wlr_seat *seat_ = nullptr;
+    QString socket_;
 
-    // wl listeners — fill public fields instead of allocating
-    struct wl_listener newOutputListener{};
-    struct wl_listener newXdgToplevelListener{};
-    struct wl_listener newXdgPopupListener{};
-    struct wl_listener newLayerListener{};
-    struct wl_listener newInputListener{};
-    struct wl_listener requestSetSelectionListener{};
+    QList<::Output*> outputs_;
+    QList<::Keyboard*> keyboards_;
+    QList<::Mouse*> mice_;
+    QList<::Toplevel*> toplevels_;
+    QList<::Popup*> popups_;
+    QList<::LayerSurface*> layers_;
 
-    // Helpers called by C listeners
-    void handleNewOutput(void* data);
-    void handleNewToplevel(void* data);
-    void handleNewPopup(void* data);
-    void handleNewLayer(void* data);
-    void handleNewInput(void* data);
-    void handleRequestSetSelection(void* data);
+    ::CursorManager *cursorMgrObj_ = nullptr;
+    ::LayoutManager *layout_ = nullptr;
+    ::AnimationManager *animManager_ = nullptr;
+    ::AnimationPool *animPool_ = nullptr;
+    ::DecorationManager *decorManager_ = nullptr;
 
-    // Command apply helpers — inline to avoid extra copies
-    void applySetWindowBox(const Cmd::SetWindowBox& c);
-    void applySetWindowActivated(const Cmd::SetWindowActivated& c);
-    void applySetWindowOpacity(const Cmd::SetWindowOpacity& c);
-    void applyRequestFrame(const Cmd::RequestFrame& c);
+    ::Toplevel *detachedWindow_ = nullptr;
+    int detachedFromWorkspace_ = -1;
+    double detachedRatio_ = -1;
+
+    WindowId nextWindowId_ = 1;
+    std::unordered_map<WindowId, ::Toplevel*> windowMap_;
+    std::vector<VariantEvent> pendingEvents_;
+
+    wl_listener newOutputListener_{};
+    wl_listener newToplevelListener_{};
+    wl_listener newPopupListener_{};
+    wl_listener newLayerListener_{};
+    wl_listener newInputListener_{};
+    wl_listener setSelectionListener_{};
+
+    void handleNewOutput(wl_listener *listener, void *data);
+    void handleNewToplevel(wl_listener *listener, void *data);
+    void handleNewPopup(wl_listener *listener, void *data);
+    void handleNewLayer(wl_listener *listener, void *data);
+    void handleNewInput(wl_listener *listener, void *data);
+    void handleSetSelection(wl_listener *listener, void *data);
 
     friend void engine_handle_newOutput(wl_listener*, void*);
     friend void engine_handle_newToplevel(wl_listener*, void*);
@@ -103,5 +146,9 @@ private:
     friend void engine_handle_newLayer(wl_listener*, void*);
     friend void engine_handle_newInput(wl_listener*, void*);
     friend void engine_handle_setSelection(wl_listener*, void*);
+
+    void applySetWindowBox(const Cmd::SetWindowBox &c);
+    void applySetWindowActivated(const Cmd::SetWindowActivated &c);
 };
+
 } // namespace astick

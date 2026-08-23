@@ -17,7 +17,7 @@
 */
 
 #include "layersurface.h"
-#include "compositor.h"
+#include "engine/engine.h"
 #include "util.h"
 
 void handle_layer_map(wl_listener *listener, void *)
@@ -83,7 +83,7 @@ uint64_t LayerSurface::genId() {
 }
 
 LayerSurface::LayerSurface(
-    Compositor *server_,
+    astick::Engine *server_,
     struct wlr_layer_surface_v1 *surface
 )
 {
