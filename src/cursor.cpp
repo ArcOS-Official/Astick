@@ -118,7 +118,7 @@ void cursor_handle_request_cursor(wl_listener *listener, void *data)
     }
 }
 
-CursorManager::CursorManager(astick::Engine *comp)
+CursorManager::CursorManager(Engine *comp)
 {
     compositor = comp;
     signal(motionListener, &compositor->getCursor()->events.motion, cursor_handle_motion);

@@ -37,7 +37,7 @@ uint64_t Popup::genId() {
 }
 
 Popup::Popup(
-    astick::Engine *server_,
+    Engine *server_,
     struct wlr_xdg_popup *popup_
 )
 {

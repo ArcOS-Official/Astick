@@ -22,7 +22,7 @@
 #include <qobject.h>
 #include "wlroots.h"
 
-namespace astick { class Engine; }
+class Engine;
 class Toplevel;
 struct wlr_cursor;
 struct wlr_xcursor_manager;
@@ -38,7 +38,7 @@ class CursorManager : public QObject
     Q_OBJECT
 
 public:
-    CursorManager(astick::Engine *comp);
+    CursorManager(Engine *comp);
     ~CursorManager();
 
     struct wl_listener motionListener;
@@ -65,7 +65,7 @@ signals:
     void interactiveEnded(Toplevel *toplevel, CursorMode mode);
 
 private:
-    astick::Engine *compositor;
+    Engine *compositor;
 
     CursorMode cursorMode = CURSOR_PASSTHROUGH;
     Toplevel *grabbedToplevel = nullptr;

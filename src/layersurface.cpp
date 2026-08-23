@@ -83,7 +83,7 @@ uint64_t LayerSurface::genId() {
 }
 
 LayerSurface::LayerSurface(
-    astick::Engine *server_,
+    Engine *server_,
     struct wlr_layer_surface_v1 *surface
 )
 {

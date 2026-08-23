@@ -21,7 +21,7 @@
 #include "resource.h"
 #include "wlroots.h"
 
-namespace astick { class Engine; }
+class Engine;
 
 class Toplevel : public Resource
 {
@@ -29,13 +29,13 @@ class Toplevel : public Resource
 
 public:
     Toplevel(
-        astick::Engine *server,
+        Engine *server,
         struct wlr_xdg_toplevel *toplevel,
         struct wlr_scene_tree *sceneTree
     );
     struct wlr_xdg_toplevel *get() const { return toplevel; }
     struct wlr_scene_tree *getSceneTree() const { return sceneTree; }
-    astick::Engine *getServer() const { return server; }
+    Engine *getServer() const { return server; }
 
     uint64_t genId() override;
 
@@ -75,7 +75,7 @@ signals:
 private:
     struct wlr_xdg_toplevel *toplevel;
     struct wlr_scene_tree *sceneTree;
-    astick::Engine *server;
+    Engine *server;
     struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener commit;

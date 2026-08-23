@@ -152,7 +152,7 @@ void Toplevel::destroyCloseSnapshot() {
 }
 
 Toplevel::Toplevel(
-    astick::Engine *server_,
+    Engine *server_,
     struct wlr_xdg_toplevel *toplevel_,
     struct wlr_scene_tree *sceneTree_
 )

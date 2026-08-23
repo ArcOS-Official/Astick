@@ -40,20 +40,16 @@ int main(int argc, char **argv) {
     }
 
     astick::State state;
+    Engine engine(app, &config);
+    engine.setState(&state);
     astick::InputManager input(state);
     astick::AnimationManager anim(state);
     astick::OutputManager outputs(state);
     state.addEventSource(&anim);
+    state.addEventSource(&engine);
+    state.addCommandReceiver(&engine);
 
-    astick::Engine engine(state, config);
-    engine.init();
-    engine.hookState();
+    engine.setInitialLayoutMode(mode);
 
-    QString m = mode.toLower().trimmed();
-    auto *layout = engine.layout();
-    if (m == "floating") layout->setWorkspaceLayoutMode(1, LayoutManager::Mode::Floating);
-    else if (m == "monowindow") layout->setWorkspaceLayoutMode(1, LayoutManager::Mode::MonoWindow);
-    else layout->setWorkspaceLayoutMode(1, LayoutManager::Mode::Tiling);
-
-    return engine.run();
+    return app.exec();
 }

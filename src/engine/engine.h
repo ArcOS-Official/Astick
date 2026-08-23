@@ -1,17 +1,38 @@
+/*
+ *  Astick, the wayland compositor for ArcDE.
+ *  Copyright (C) 2026 Eyad Ahmed Ragheb
+
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #pragma once
+
+#include <QtCore>
 #include <QObject>
+#include <qobject.h>
 #include <QList>
-#include <QString>
 #include "../wlroots.h"
-#include "../config.h"
-#include "../layout.h"
 #include "../output.h"
+#include "../input/keyboard.h"
+#include "../input/mouse.h"
 #include "../toplevel.h"
 #include "../popup.h"
 #include "../layersurface.h"
 #include "../cursor.h"
-#include "../input/keyboard.h"
-#include "../input/mouse.h"
+#include "../layout.h"
+#include "../application.h"
+#include "../config.h"
 #include "../animation.h"
 #include "../animation_pool.h"
 #include "../decoration.h"
@@ -19,136 +40,137 @@
 #include "../state/event.h"
 #include "../state/command.h"
 
-namespace astick {
-
-class Engine : public QObject, public CommandReceiver, public EventSource {
+class Engine : public QObject, public astick::CommandReceiver, public astick::EventSource
+{
     Q_OBJECT
+
 public:
-    explicit Engine(State &state, Config &config, QObject *parent = nullptr);
-    ~Engine() override;
+    explicit Engine(const Astick &app, Config *cfg = nullptr);
+    ~Engine();
 
-    void init();
-    void hookState();
-    int run();
+    struct wlr_scene *getScene() { return scene; }
+    struct wlr_output_layout *getOutputLayout() { return outputLayout; }
+    struct wlr_scene_tree *getLayerTree(uint32_t layer) { return layerTrees[layer]; }
+    struct wlr_scene_tree *getPopupTree() { return popupTree; }
+    struct wl_display *getDisplay() { return display; }
+    struct wlr_seat *getSeat() { return seat; }
+    struct wlr_cursor *getCursor() { return cursor; }
+    struct wlr_xcursor_manager *getCursorMgr() { return cursorMgr; }
+    QList<Toplevel *> &getToplevels() { return toplevels; }
+    QList<Output *> &getOutputs() { return outputs; }
 
-    std::vector<VariantEvent> poll() override;
-    std::optional<int> nextWakeupMs() const override { return std::nullopt; }
-    void onCommand(const VariantCommand &cmd) override;
-
-    wlr_scene *scene() const { return scene_; }
-    wlr_output_layout *outputLayout() const { return outputLayout_; }
-    wlr_seat *seat() const { return seat_; }
-    wlr_cursor *cursor() const { return cursor_; }
-    wl_display *display() const { return display_; }
-    LayoutManager *layout() const { return layout_; }
-
-    // Compatibility aliases for old Compositor API used by Toplevel/Popup/LayerSurface/Cursor
-    wlr_seat *getSeat() const { return seat_; }
-    wlr_scene *getScene() const { return scene_; }
-    wlr_output_layout *getOutputLayout() const { return outputLayout_; }
-    wlr_scene_tree *getLayerTree(uint32_t l) const { return layerTrees[l]; }
-    wlr_scene_tree *getPopupTree() const { return popupTree_; }
-    QList<::Output*>& getOutputs() { return outputs_; }
-    QList<::Toplevel*>& getToplevels() { return toplevels_; }
-    wlr_cursor *getCursor() const { return cursor_; }
-    wlr_xcursor_manager *getCursorMgr() const { return cursorMgr_; }
-    Config *getConfig() { return &config_; }
-    LayoutManager *getLayout() { return layout_; }
-    ::AnimationManager *getAnimationManager() { return animManager_; }
-    ::DecorationManager *getDecorationManager() { return decorManager_; }
-    void startCloseAnimation(::Toplevel*) {}
+    void focusToplevel(Toplevel *toplevel);
+    Output *outputForToplevel(Toplevel *toplevel);
     void setInitialLayoutMode(const QString &mode);
-
-    void focusToplevel(::Toplevel *t);
-    ::Output *outputForToplevel(::Toplevel *t);
-    struct wlr_box usableAreaForOutput(wlr_output *output);
-    struct wlr_box fullAreaForOutput(wlr_output *output);
+    struct wlr_box usableAreaForOutput(struct wlr_output *output);
+    struct wlr_box fullAreaForOutput(struct wlr_output *output);
+    Config* getConfig() { return config; }
+    LayoutManager *getLayout() { return layout; }
+    AnimationManager *getAnimationManager() { return animManager; }
+    DecorationManager *getDecorationManager() { return decorManager; }
     void rearrangeTiled();
-    void arrangeForOutput(::Output *out);
+    void arrangeForOutput(Output *out);
+    bool setFullscreen(Toplevel *toplevel, bool fullscreen);
+    bool setMaximized(Toplevel *toplevel, bool maximized);
+    void applyConfigDecorations(); // sync Config -> runtime managers
+    void scheduleAllOutputs(); // force frame at max fps (used by AnimationManager)
+
+public slots:
+    void run();
+    void closePopup(Popup *popup);
 
 signals:
-    void ready();
+    void outputAdded(struct wlr_output *output);
+    void toplevelAdded(struct wlr_xdg_toplevel *toplevel);
+    void toplevelMapped(Toplevel *toplevel);
+    void toplevelUnmapped(Toplevel *toplevel);
+    void popupAdded(struct wlr_xdg_popup *popup);
+    void layerAdded(struct wlr_layer_surface_v1 *surface);
+    void setSelection(struct wlr_seat_request_set_selection_event *event);
+    void inputAdded(struct wlr_input_device *device);
 
 private slots:
     void onOutputAdded(struct wlr_output *output);
-    void onToplevelAdded(struct wlr_xdg_toplevel *toplevel);
-    void onPopupAdded(struct wlr_xdg_popup *popup);
-    void onLayerAdded(struct wlr_layer_surface_v1 *surface);
-    void onSetSelection(wlr_seat_request_set_selection_event *event);
-    void onInputAdded(wlr_input_device *device);
+    void onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel);
+    void onPopupAdded(struct wlr_xdg_popup *xpopup);
+    void onLayerAdded(struct wlr_layer_surface_v1 *lsurface);
+    void onSetSelection(struct wlr_seat_request_set_selection_event *event);
+    void onInputAdded(struct wlr_input_device *device);
+    void onToplevelMapped(Toplevel *toplevel);
+    void onToplevelUnmapped(Toplevel *toplevel);
+
+public:
+    void startCloseAnimation(Toplevel *toplevel);
+
+    // State integration
+    void setState(astick::State *s) { state_ = s; }
+    std::vector<astick::VariantEvent> poll() override;
+    std::optional<int> nextWakeupMs() const override { return std::nullopt; }
+    void onCommand(const astick::VariantCommand &cmd) override;
 
 private:
+    bool initialized = false;
+    struct wl_display *display = nullptr;
+    struct wl_event_loop *loop = nullptr;
+    struct wlr_backend *backend = nullptr;
+    struct wlr_renderer *renderer = nullptr;
+    struct wlr_allocator *allocator = nullptr;
+    struct wlr_scene *scene = nullptr;
+    struct wlr_scene_output_layout *sceneLayout = nullptr;
+    struct wlr_output_layout *outputLayout = nullptr;
+    struct wlr_xdg_shell *xdgShell = nullptr;
+    struct wlr_layer_shell_v1 *layerShell = nullptr;
+    struct wlr_scene_tree *layerTrees[4] = {};
+    struct wlr_scene_tree *popupTree = nullptr;
+    struct wlr_cursor *cursor = nullptr;
+    struct wlr_xcursor_manager *cursorMgr = nullptr;
+    struct wlr_seat *seat = nullptr;
+    QString socket;
+    QList<Output *> outputs;
+    QList<Keyboard *> keyboards;
+    QList<Mouse *> mice;
+    QList<Toplevel *> toplevels;
+    QList<Popup *> popups;
+    QList<LayerSurface *> layers;
+
+    CursorManager *cursorMgrObj = nullptr;
+    LayoutManager *layout = nullptr;
+    AnimationManager *animManager = nullptr;
+    AnimationPool *animPool = nullptr;
+    DecorationManager *decorManager = nullptr;
+    Config *config = nullptr;
+    astick::State *state_ = nullptr;
+
+    Toplevel *detachedWindow = nullptr;
+    int detachedFromWorkspace = -1;
+    double detachedRatio = -1;
+
+    struct wl_listener newOutputListener;
+    struct wl_listener newXdgToplevelNotifyListener;
+    struct wl_listener newXdgPopupNotifyListener;
+    struct wl_listener newLayerNotifyListener;
+    struct wl_listener setSelectionListener;
+    struct wl_listener newInputListener;
+
+    friend void handle_newOutput(wl_listener *listener, void *data);
+    friend void handle_newXdgToplevelNotify(wl_listener *listener, void *data);
+    friend void handle_newXdgPopupNotify(wl_listener *listener, void *data);
+    friend void handle_newLayerNotify(wl_listener *listener, void *data);
+    friend void handle_setSelection(wl_listener *listener, void *data);
+    friend void handle_newInput(wl_listener *listener, void *data);
+
     void addKeyboard(struct wlr_input_device *device);
     void addMouse(struct wlr_input_device *device);
-    void scheduleAllOutputs();
 
-    struct wlr_box boxForStyle(AnimationStyle style, const wlr_box &finalBox, bool isStart);
-
-    State &state_;
-    Config &config_;
-    bool hooked_ = false;
-
-    wl_display *display_ = nullptr;
-    wl_event_loop *loop_ = nullptr;
-    wlr_backend *backend_ = nullptr;
-    wlr_renderer *renderer_ = nullptr;
-    wlr_allocator *allocator_ = nullptr;
-    wlr_scene *scene_ = nullptr;
-    wlr_scene_output_layout *sceneLayout_ = nullptr;
-    wlr_output_layout *outputLayout_ = nullptr;
-    wlr_xdg_shell *xdgShell_ = nullptr;
-    wlr_layer_shell_v1 *layerShell_ = nullptr;
-    wlr_scene_tree *layerTrees[4] = {};
-    wlr_scene_tree *popupTree_ = nullptr;
-    wlr_cursor *cursor_ = nullptr;
-    wlr_xcursor_manager *cursorMgr_ = nullptr;
-    wlr_seat *seat_ = nullptr;
-    QString socket_;
-
-    QList<::Output*> outputs_;
-    QList<::Keyboard*> keyboards_;
-    QList<::Mouse*> mice_;
-    QList<::Toplevel*> toplevels_;
-    QList<::Popup*> popups_;
-    QList<::LayerSurface*> layers_;
-
-    ::CursorManager *cursorMgrObj_ = nullptr;
-    ::LayoutManager *layout_ = nullptr;
-    ::AnimationManager *animManager_ = nullptr;
-    ::AnimationPool *animPool_ = nullptr;
-    ::DecorationManager *decorManager_ = nullptr;
-
-    ::Toplevel *detachedWindow_ = nullptr;
-    int detachedFromWorkspace_ = -1;
-    double detachedRatio_ = -1;
-
-    WindowId nextWindowId_ = 1;
-    std::unordered_map<WindowId, ::Toplevel*> windowMap_;
-    std::vector<VariantEvent> pendingEvents_;
-
-    wl_listener newOutputListener_{};
-    wl_listener newToplevelListener_{};
-    wl_listener newPopupListener_{};
-    wl_listener newLayerListener_{};
-    wl_listener newInputListener_{};
-    wl_listener setSelectionListener_{};
-
-    void handleNewOutput(wl_listener *listener, void *data);
-    void handleNewToplevel(wl_listener *listener, void *data);
-    void handleNewPopup(wl_listener *listener, void *data);
-    void handleNewLayer(wl_listener *listener, void *data);
-    void handleNewInput(wl_listener *listener, void *data);
-    void handleSetSelection(wl_listener *listener, void *data);
-
-    friend void engine_handle_newOutput(wl_listener*, void*);
-    friend void engine_handle_newToplevel(wl_listener*, void*);
-    friend void engine_handle_newPopup(wl_listener*, void*);
-    friend void engine_handle_newLayer(wl_listener*, void*);
-    friend void engine_handle_newInput(wl_listener*, void*);
-    friend void engine_handle_setSelection(wl_listener*, void*);
-
-    void applySetWindowBox(const Cmd::SetWindowBox &c);
-    void applySetWindowActivated(const Cmd::SetWindowActivated &c);
+    // Animation helpers (new pool, target-driven)
+    struct wlr_box boxForStyle(AnimationStyle style, const struct wlr_box &finalBox, bool isStart);
+    void animateBoxForToplevel(Toplevel *tl, struct wlr_box from, struct wlr_box to, const AnimDef &def, const QString &id);
+    void animateBoxForToplevelPool(Toplevel *tl, struct wlr_box from, struct wlr_box to, const std::string &kind);
+    void animateTilingMove(const std::unordered_map<Toplevel*, struct wlr_box> &before, const std::unordered_map<Toplevel*, struct wlr_box> &after);
+    void animateWindowOpen(Toplevel *tl, const struct wlr_box &finalBox);
+    void animateWindowClose(Toplevel *tl, const struct wlr_box &curBox);
+    void animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const struct wlr_box &usable);
+    void animatePopupOpen(Popup *popup);
+    void animatePopupClose(Popup *popup);
+    void dumpDebugState();
 };
-
-} // namespace astick
