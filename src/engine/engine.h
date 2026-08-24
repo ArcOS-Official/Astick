@@ -48,26 +48,54 @@ public:
     explicit Engine(const Astick &app, Config *cfg = nullptr);
     ~Engine();
 
-    struct wlr_scene *getScene() { return scene; }
-    struct wlr_output_layout *getOutputLayout() { return outputLayout; }
-    struct wlr_scene_tree *getLayerTree(uint32_t layer) { return layerTrees[layer]; }
-    struct wlr_scene_tree *getPopupTree() { return popupTree; }
-    struct wl_display *getDisplay() { return display; }
-    struct wlr_seat *getSeat() { return seat; }
-    struct wlr_cursor *getCursor() { return cursor; }
-    struct wlr_xcursor_manager *getCursorMgr() { return cursorMgr; }
-    QList<Toplevel *> &getToplevels() { return toplevels; }
-    QList<Output *> &getOutputs() { return outputs; }
+    struct wlr_scene *getScene() {
+        return scene;
+    }
+    struct wlr_output_layout *getOutputLayout() {
+        return outputLayout;
+    }
+    struct wlr_scene_tree *getLayerTree(uint32_t layer) {
+        return layerTrees[layer];
+    }
+    struct wlr_scene_tree *getPopupTree() {
+        return popupTree;
+    }
+    struct wl_display *getDisplay() {
+        return display;
+    }
+    struct wlr_seat *getSeat() {
+        return seat;
+    }
+    struct wlr_cursor *getCursor() {
+        return cursor;
+    }
+    struct wlr_xcursor_manager *getCursorMgr() {
+        return cursorMgr;
+    }
+    QList<Toplevel *> &getToplevels() {
+        return toplevels;
+    }
+    QList<Output *> &getOutputs() {
+        return outputs;
+    }
 
     void focusToplevel(Toplevel *toplevel);
     Output *outputForToplevel(Toplevel *toplevel);
     void setInitialLayoutMode(const QString &mode);
     struct wlr_box usableAreaForOutput(struct wlr_output *output);
     struct wlr_box fullAreaForOutput(struct wlr_output *output);
-    Config* getConfig() { return config; }
-    LayoutManager *getLayout() { return layout; }
-    AnimationManager *getAnimationManager() { return animManager; }
-    DecorationManager *getDecorationManager() { return decorManager; }
+    Config* getConfig() {
+        return config;
+    }
+    LayoutManager *getLayout() {
+        return layout;
+    }
+    AnimationManager *getAnimationManager() {
+        return animManager;
+    }
+    DecorationManager *getDecorationManager() {
+        return decorManager;
+    }
     void rearrangeTiled();
     void arrangeForOutput(Output *out);
     bool setFullscreen(Toplevel *toplevel, bool fullscreen);
@@ -103,7 +131,9 @@ public:
     void startCloseAnimation(Toplevel *toplevel);
 
     // State integration
-    void setState(astick::IEngineState *s) { state_ = s; }
+    void setState(astick::IEngineState *s) {
+        state_ = s;
+    }
     std::vector<astick::VariantEvent> poll() override;
     std::optional<int> nextWakeupMs() const override { return std::nullopt; }
     void onCommand(const astick::VariantCommand &cmd) override;

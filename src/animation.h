@@ -106,9 +106,15 @@ private:
     std::function<void()> m_finishedCb;
 };
 
-inline double lerpVal(double a, double b, double t) { return a + (b - a) * t; }
-inline int lerpVal(int a, int b, double t) { return int(a + (b - a) * t); }
-inline float lerpVal(float a, float b, double t) { return float(a + (b - a) * t); }
+inline double lerpVal(double a, double b, double t) {
+    return a + (b - a) * t;
+}
+inline int lerpVal(int a, int b, double t) {
+    return int(a + (b - a) * t);
+}
+inline float lerpVal(float a, float b, double t) {
+    return float(a + (b - a) * t);
+}
 template<typename T>
 inline void lerpArray(T **ptrs, T *aVals, T *bVals, int count, double t) {
     for(int i=0;i<count;i++) *ptrs[i] = T(aVals[i] + (bVals[i] - aVals[i]) * t);

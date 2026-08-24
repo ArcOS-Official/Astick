@@ -7,7 +7,7 @@
 namespace astick {
 
 // OutputManager: translates OutputEvent, handles layer exclusive zone.
-// Zero-copy: receives const OutputEventent&, computes usable/full via Box math
+// Zero-copy: receives const OutputEvent&, computes usable/full via Box math
 // without allocating, pushes commands only when needed.
 
 struct OutputInfo {

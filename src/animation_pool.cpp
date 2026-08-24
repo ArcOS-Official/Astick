@@ -8,7 +8,9 @@ AnimationPool::~AnimationPool() {
     pool.clear();
 }
 
-void AnimationPool::setConfig(Config* cfg) { config = cfg; }
+void AnimationPool::setConfig(Config* cfg) {
+    config = cfg;
+}
 size_t AnimationPool::size() const { return pool.size(); }
 bool AnimationPool::hasAnimationFor(uint64_t resId) const { return pool.find(resId)!=pool.end(); }
 
@@ -20,16 +22,22 @@ uint64_t AnimationPool::nowMs() const {
 
 void AnimationPool::removeAnimation(uint64_t resourceId) {
     auto it = pool.find(resourceId);
-    if(it==pool.end()) return;
+    if(it==pool.end()
+        ) return;
     AnimationInstanceBase* inst = it->second;
     pool.erase(it);
     inst->disconnect(this);
     inst->deleteLater();
 }
 void AnimationPool::removeAnimation(AnimationInstanceBase* inst) {
-    if(!inst) return;
+    if(!inst)
+        return;
     for(auto it=pool.begin(); it!=pool.end(); ++it){
-        if(it->second==inst){ pool.erase(it); inst->deleteLater(); break; }
+        if(it->second==inst){
+            pool.erase(it);
+            inst->deleteLater();
+            break;
+        }
     }
 }
 
@@ -44,7 +52,8 @@ void AnimationPool::tickAll(uint64_t now) {
         AnimationInstanceBase* inst = kv.second;
         bool still = inst->tick(now);
         wlr_log(WLR_INFO, "  tick inst %p target %p id %lu kind %s still=%d", (void*)inst, (void*)inst->target(), (unsigned long)kv.first, inst->kindName().c_str(), still);
-        if(!still) doneIds.push_back(kv.first);
+        if(!still)
+            doneIds.push_back(kv.first);
     }
     for(uint64_t id : doneIds){
         auto it = pool.find(id);
@@ -77,7 +86,11 @@ template<typename T>
 AnimationInstance<T>::AnimationInstance(Resource* target_, const std::string& kind_, std::array<T*,10> ptrs_, std::array<T,10> starts_, std::array<T,10> targets_, int count_, AnimDef def_, uint64_t startMs, std::function<void()> applyCb, QObject* parent)
     : AnimationInstanceBase(target_, kind_, parent), count(count_) {
     def = def_;
-    for(int i=0;i<10;i++) { ptrs[i]=ptrs_[i]; startVals[i]=starts_[i]; targets[i]=targets_[i]; }
+    for(int i=0;i<10;i++) {
+        ptrs[i]=ptrs_[i];
+        startVals[i]=starts_[i];
+        targets[i]=targets_[i];
+    }
     startTimeMs = startMs;
     applyCallback = applyCb;
     generateId();
@@ -95,19 +108,23 @@ uint64_t AnimationInstance<T>::genId() {
 
 template<typename T>
 bool AnimationInstance<T>::tick(uint64_t nowMs_) {
-    if (!targetRes) return false;
+    if (!targetRes)
+        return false;
     uint64_t elapsed = nowMs_ >= startTimeMs ? nowMs_ - startTimeMs : 0;
     double t = def.duration > 0 ? double(elapsed) / double(def.duration) : 1.0;
-    if (t >= 1.0) t = 1.0;
+    if (t >= 1.0)
+        t = 1.0;
     double eased = Animation::applyEasing(t, Animation::easingFromString(QString::fromStdString(def.easing), Animation::Easing::EaseOutCubic));
     wlr_log(WLR_INFO, "AnimationInstance tick target %lu kind %s t=%.3f eased=%.3f count=%d", (unsigned long)targetRes->id, kind.c_str(), t, eased, count);
     for(int i=0;i<count;i++) if(ptrs[i]) {
         *ptrs[i] = T(startVals[i] + (targets[i] - startVals[i]) * eased);
     }
-    if (applyCallback) applyCallback();
+    if (applyCallback)
+        applyCallback();
     if (t >= 1.0) {
         for(int i=0;i<count;i++) if(ptrs[i]) *ptrs[i] = targets[i];
-        if (applyCallback) applyCallback();
+        if (applyCallback)
+            applyCallback();
         return false;
     }
     return true;
@@ -143,7 +160,8 @@ AnimationInstance<T>* AnimationPool::addInstance(Resource& target, std::array<T*
     wlr_log(WLR_INFO, "  using def duration %d easing %s enabled %d", def.duration, def.easing.c_str(), def.enabled);
     if (!def.enabled || def.duration==0) {
         for(int i=0;i<count;i++) if(ptrs[i]) *ptrs[i]=targets[i];
-        if(applyCb) applyCb();
+        if(applyCb)
+            applyCb();
         return nullptr;
     }
     std::array<T,10> starts{};
@@ -152,7 +170,10 @@ AnimationInstance<T>* AnimationPool::addInstance(Resource& target, std::array<T*
     auto *inst = new AnimationInstance<T>(&target, kind, ptrs, starts, targets, count, def, now, applyCb, this);
     connect(inst, &Resource::resourceDestroyed, this, [this, inst](Resource*){
         for(auto it2 = pool.begin(); it2 != pool.end(); ++it2){
-            if(it2->second == inst){ pool.erase(it2); break; }
+            if(it2->second == inst){
+                pool.erase(it2);
+                break;
+            }
         }
     });
     connect(&target, &Resource::resourceDestroyed, this, [this, resId](Resource*){
@@ -200,7 +221,8 @@ AnimationInstance<T>* AnimationPool::addInstanceWithDef(Resource& target, std::a
     if (!def.enabled || def.duration==0) {
         wlr_log(WLR_INFO, "  def disabled or zero duration, applying directly");
         for(int i=0;i<count;i++) if(ptrs[i]) *ptrs[i]=targets[i];
-        if(applyCb) applyCb();
+        if(applyCb)
+            applyCb();
         return nullptr;
     }
     std::array<T,10> starts{};
@@ -209,7 +231,10 @@ AnimationInstance<T>* AnimationPool::addInstanceWithDef(Resource& target, std::a
     auto *inst = new AnimationInstance<T>(&target, "custom", ptrs, starts, targets, count, def, now, applyCb, this);
     connect(inst, &Resource::resourceDestroyed, this, [this, inst](Resource*){
         for(auto it = pool.begin(); it != pool.end(); ++it){
-            if(it->second == inst){ pool.erase(it); break; }
+            if(it->second == inst){
+                pool.erase(it);
+                break;
+            }
         }
     });
     connect(&target, &Resource::resourceDestroyed, this, [this, resId](Resource*){

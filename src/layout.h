@@ -60,8 +60,10 @@ public:
             n->left = std::move(l);
             n->right = std::move(rr);
             n->parent = par;
-            if (n->left) n->left->parent = n.get();
-            if (n->right) n->right->parent = n.get();
+            if (n->left)
+                n->left->parent = n.get();
+            if (n->right)
+                n->right->parent = n.get();
             return n;
         }
     };
@@ -135,14 +137,24 @@ public:
     void setLeafGeometry(Toplevel *tl, const struct wlr_box &box);
 
     // Configurables (tweakable)
-    void setDefaultSplitRatio(double r) { defaultSplitRatio = r; }
+    void setDefaultSplitRatio(double r) {
+        defaultSplitRatio = r;
+    }
     double getDefaultSplitRatio() const { return defaultSplitRatio; }
-    void setOppositeOrientation(bool v) { oppositeOrientation = v; }
+    void setOppositeOrientation(bool v) {
+        oppositeOrientation = v;
+    }
     bool getOppositeOrientation() const { return oppositeOrientation; }
-    void setKeepRatioOnDrop(bool v) { keepRatioOnDrop = v; }
+    void setKeepRatioOnDrop(bool v) {
+        keepRatioOnDrop = v;
+    }
     bool getKeepRatioOnDrop() const { return keepRatioOnDrop; }
-    void setMinRatio(double v) { minRatio = v; }
-    void setMaxRatio(double v) { maxRatio = v; }
+    void setMinRatio(double v) {
+        minRatio = v;
+    }
+    void setMaxRatio(double v) {
+        maxRatio = v;
+    }
 
 private:
     struct Workspace {
@@ -201,6 +213,8 @@ private:
     void arrangeNodeOthers(BspNode *node, struct wlr_box box, Toplevel *excluded);
     bool removeRecursive(std::unique_ptr<BspNode> &node, Toplevel *tl);
     bool replaceNode(std::unique_ptr<BspNode> &root, BspNode *target, std::unique_ptr<BspNode> replacement);
-    static Orientation opposite(Orientation o) { return o == Orientation::Horizontal ? Orientation::Vertical : Orientation::Horizontal; }
+    static Orientation opposite(Orientation o) {
+        return o == Orientation::Horizontal ? Orientation::Vertical : Orientation::Horizontal;
+    }
     void getAllBoxesRecursive(BspNode *node, struct wlr_box box, std::vector<std::pair<BspNode*, struct wlr_box>> &out) const;
 };

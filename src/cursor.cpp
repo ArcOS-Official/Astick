@@ -39,8 +39,10 @@ void cursor_handle_motion(wl_listener *listener, void *data)
             // libinput speed is -1..1, map to multiplier 0.1x..3.0x for wayland pointer
             // Use formula: multiplier = 1.0 + speed * 2.0  (speed 0 => 1.0, 0.5 => 2.0, -0.5 => 0.0? clamp)
             double mult = 1.0 + speed;
-            if (mult < 0.1) mult = 0.1;
-            if (mult > 5.0) mult = 5.0;
+            if (mult < 0.1)
+                mult = 0.1;
+            if (mult > 5.0)
+                mult = 5.0;
             dx *= mult;
             dy *= mult;
         }
@@ -192,9 +194,11 @@ void CursorManager::processMotion(uint32_t time)
 void CursorManager::processMove()
 {
     Toplevel *toplevel = grabbedToplevel;
-    if (!toplevel) return;
+    if (!toplevel)
+        return;
     auto *layout = compositor->getLayout();
-    if (layout && (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel))) return;
+    if (layout && (layout->isFullscreen(toplevel)
+        || layout->isMaximized(toplevel))) return;
     struct wlr_cursor *cursor = compositor->getCursor();
     double nx = cursor->x - grabX;
     double ny = cursor->y - grabY;
@@ -208,10 +212,14 @@ void CursorManager::processMove()
         double minY = usable.y - geo->y;
         double maxX = usable.x + usable.width - geo->x - winW;
         double maxY = usable.y + usable.height - geo->y - winH;
-        if (nx < minX) nx = minX;
-        if (ny < minY) ny = minY;
-        if (nx > maxX) nx = maxX;
-        if (ny > maxY) ny = maxY;
+        if (nx < minX)
+            nx = minX;
+        if (ny < minY)
+            ny = minY;
+        if (nx > maxX)
+            nx = maxX;
+        if (ny > maxY)
+            ny = maxY;
     }
 
     wlr_scene_node_set_position(&toplevel->getSceneTree()->node, nx, ny);
@@ -230,10 +238,12 @@ void CursorManager::processMove()
 void CursorManager::processResize()
 {
     Toplevel *toplevel = grabbedToplevel;
-    if (!toplevel) return;
+    if (!toplevel)
+        return;
 
     auto *layout = compositor->getLayout();
-    if (layout && (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel))) return;
+    if (layout && (layout->isFullscreen(toplevel)
+        || layout->isMaximized(toplevel))) return;
     int ws = layout ? layout->getWindowWorkspace(toplevel) : -1;
     bool isFloatingWindow = layout && layout->isFloating(toplevel);
     // Guard: if workspace has no other tiled windows, don't resize via BSP; floating windows are always resizable
@@ -256,17 +266,21 @@ void CursorManager::processResize()
 
     if (resizeEdges & WLR_EDGE_TOP) {
         new_top = border_y;
-        if (new_top >= new_bottom) new_top = new_bottom - 1;
+        if (new_top >= new_bottom)
+            new_top = new_bottom - 1;
     } else if (resizeEdges & WLR_EDGE_BOTTOM) {
         new_bottom = border_y;
-        if (new_bottom <= new_top) new_bottom = new_top + 1;
+        if (new_bottom <= new_top)
+            new_bottom = new_top + 1;
     }
     if (resizeEdges & WLR_EDGE_LEFT) {
         new_left = border_x;
-        if (new_left >= new_right) new_left = new_right - 1;
+        if (new_left >= new_right)
+            new_left = new_right - 1;
     } else if (resizeEdges & WLR_EDGE_RIGHT) {
         new_right = border_x;
-        if (new_right <= new_left) new_right = new_left + 1;
+        if (new_right <= new_left)
+            new_right = new_left + 1;
     }
 
     struct wlr_box usable = {};
@@ -274,12 +288,18 @@ void CursorManager::processResize()
     if (auto *out = compositor->outputForToplevel(toplevel)) {
         usable = compositor->usableAreaForOutput(out->get());
         hasUsable = true;
-        if (new_left < usable.x) new_left = usable.x;
-        if (new_top < usable.y) new_top = usable.y;
-        if (new_right > usable.x + usable.width) new_right = usable.x + usable.width;
-        if (new_bottom > usable.y + usable.height) new_bottom = usable.y + usable.height;
-        if (new_left >= new_right) new_left = new_right - 1;
-        if (new_top >= new_bottom) new_top = new_bottom - 1;
+        if (new_left < usable.x)
+            new_left = usable.x;
+        if (new_top < usable.y)
+            new_top = usable.y;
+        if (new_right > usable.x + usable.width)
+            new_right = usable.x + usable.width;
+        if (new_bottom > usable.y + usable.height)
+            new_bottom = usable.y + usable.height;
+        if (new_left >= new_right)
+            new_left = new_right - 1;
+        if (new_top >= new_bottom)
+            new_top = new_bottom - 1;
     }
 
     // Hyprland-like tiling resize: adjust BSP ratio directly, no window-first stacking
@@ -323,7 +343,8 @@ void CursorManager::resetMode()
 void CursorManager::beginInteractive(Toplevel *toplevel, CursorMode mode, uint32_t edges)
 {
     auto *layoutChk = compositor->getLayout();
-    if (layoutChk && (layoutChk->isFullscreen(toplevel) || layoutChk->isMaximized(toplevel))) return;
+    if (layoutChk && (layoutChk->isFullscreen(toplevel)
+        || layoutChk->isMaximized(toplevel))) return;
     // Enforce workspace single-window no-resize rule at entry too, but floating windows can always be resized
     if (mode == CURSOR_RESIZE) {
         auto *layout = compositor->getLayout();

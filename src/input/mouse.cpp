@@ -64,15 +64,18 @@ void Mouse::applyConfig(const MouseConfig &cfg) {
     // Accel profile
     if (libinput_device_config_accel_is_available(libdev)) {
         enum libinput_config_accel_profile profile = LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE;
-        if (cfg.accel_profile == "flat") profile = LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
+        if (cfg.accel_profile == "flat")
+            profile = LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
         else if (cfg.accel_profile == "none" || cfg.accel_profile == "off") profile = LIBINPUT_CONFIG_ACCEL_PROFILE_NONE;
         // Some libinput versions use CUSTOM, fallback
         if (libinput_device_config_accel_set_profile(libdev, profile) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_INFO, "Failed to set accel profile %s", cfg.accel_profile.c_str());
         }
         double speed = cfg.speed;
-        if (speed < -1.0) speed = -1.0;
-        if (speed > 1.0) speed = 1.0;
+        if (speed < -1.0)
+            speed = -1.0;
+        if (speed > 1.0)
+            speed = 1.0;
         if (libinput_device_config_accel_set_speed(libdev, speed) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_INFO, "Failed to set accel speed %.2f", speed);
         }
@@ -97,7 +100,8 @@ void Mouse::applyConfig(const MouseConfig &cfg) {
     // Tap
     if (libinput_device_config_tap_get_finger_count(libdev) > 0) {
         enum libinput_config_tap_button_map map = LIBINPUT_CONFIG_TAP_MAP_LRM;
-        if (cfg.tap_button_map == "lmr") map = LIBINPUT_CONFIG_TAP_MAP_LMR;
+        if (cfg.tap_button_map == "lmr")
+            map = LIBINPUT_CONFIG_TAP_MAP_LMR;
         libinput_device_config_tap_set_button_map(libdev, map);
         libinput_device_config_tap_set_enabled(libdev, cfg.tap_enabled ? LIBINPUT_CONFIG_TAP_ENABLED : LIBINPUT_CONFIG_TAP_DISABLED);
     }

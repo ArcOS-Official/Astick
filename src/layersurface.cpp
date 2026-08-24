@@ -63,7 +63,8 @@ void handle_layer_destroy(wl_listener *listener, void *)
 
 void LayerSurface::configure()
 {
-    if (layer->output == nullptr) return;
+    if (layer->output == nullptr)
+        return;
 
     struct wlr_scene_tree *target = server->getLayerTree(layer->current.layer);
     if (sceneLayer->tree->node.parent != target) {

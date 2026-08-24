@@ -139,54 +139,65 @@ struct AnimationsConfig {
 
     const AnimPair* pairFor(const std::string &id) const {
         auto it = pairs.find(id);
-        if (it != pairs.end()) return &it->second;
+        if (it != pairs.end()
+            ) return &it->second;
         return nullptr;
     }
     AnimPair* pairFor(const std::string &id) {
         auto it = pairs.find(id);
-        if (it != pairs.end()) return &it->second;
+        if (it != pairs.end()
+            ) return &it->second;
         return nullptr;
     }
     // legacy helpers (kept for compat)
     bool isEnabled(const std::string &id) const {
-        if (auto *p = pairFor(id)) return p->start.enabled;
+        if (auto *p = pairFor(id)
+            ) return p->start.enabled;
         auto it = presets.find(id);
-        if (it != presets.end()) return it->second.enabled;
+        if (it != presets.end()
+            ) return it->second.enabled;
         return true;
     }
     int durationFor(const std::string &id, int fallback) const {
         if (auto *p = pairFor(id)) {
-            if (p->start.duration >= 0) return p->start.duration;
+            if (p->start.duration >= 0)
+                return p->start.duration;
         }
         auto it = presets.find(id);
-        if (it != presets.end() && it->second.duration >= 0) return it->second.duration;
+        if (it != presets.end()
+            && it->second.duration >= 0) return it->second.duration;
         return fallback;
     }
     std::string easingFor(const std::string &id, const std::string &fallback) const {
         if (auto *p = pairFor(id)) {
-            if (!p->start.easing.empty()) return p->start.easing;
+            if (!p->start.easing.empty()
+                ) return p->start.easing;
         }
         auto it = presets.find(id);
-        if (it != presets.end() && !it->second.easing.empty()) return it->second.easing;
+        if (it != presets.end()
+            && !it->second.easing.empty()) return it->second.easing;
         return fallback;
     }
     // new helpers for paired model
     int durationFor(const std::string &id, bool isStart, int fallback) const {
         if (auto *p = pairFor(id)) {
             const AnimDef &d = isStart ? p->start : (p->end ? *p->end : p->start);
-            if (d.duration >= 0) return d.duration;
+            if (d.duration >= 0)
+                return d.duration;
         }
         return durationFor(id, fallback);
     }
     std::string easingFor(const std::string &id, bool isStart, const std::string &fallback) const {
         if (auto *p = pairFor(id)) {
             const AnimDef &d = isStart ? p->start : (p->end ? *p->end : p->start);
-            if (!d.easing.empty()) return d.easing;
+            if (!d.easing.empty()
+                ) return d.easing;
         }
         return easingFor(id, fallback);
     }
     bool hasEndFor(const std::string &id) const {
-        if (auto *p = pairFor(id)) return p->hasEnd();
+        if (auto *p = pairFor(id)
+            ) return p->hasEnd();
         return false;
     }
 };
@@ -211,7 +222,9 @@ public:
 
     static std::filesystem::path defaultPath();
     static std::string embeddedDefaultJson();
-    static std::filesystem::path templatePath() { return "config.template.json"; }
+    static std::filesystem::path templatePath() {
+        return "config.template.json";
+    }
     bool load(const std::filesystem::path &path = {});
     bool save(const std::filesystem::path &path = {}) const;
     void loadOrCreateDefault();

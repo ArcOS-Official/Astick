@@ -44,7 +44,7 @@ void handle_commit(wl_listener *listener, void *)
 
 void handle_destroy(wl_listener *listener, void *)
 {
-    Toplevel *self = wl_container_of(listener, self, destroy);
+    Toplevel *self = wl_container_of(listener, self, destroy); // NOLINT(clang-analyzer-security.ArrayBound)
     wlr_log(WLR_INFO, "handle_destroy: tl %p id %lu", (void*)self, (unsigned long)self->id);
     wl_list_remove(&self->map.link);
     wl_list_remove(&self->unmap.link);
@@ -110,10 +110,13 @@ static bool close_snapshot_point_accepts_input(struct wlr_scene_buffer *buffer, 
 }
 
 void Toplevel::createCloseSnapshot() {
-    if (closeSnapshot) return;
-    if (!toplevel || !toplevel->base || !toplevel->base->surface) return;
+    if (closeSnapshot)
+        return;
+    if (!toplevel || !toplevel->base || !toplevel->base->surface)
+        return;
     struct wlr_surface *surf = toplevel->base->surface;
-    if (!surf || !surf->buffer) return;
+    if (!surf || !surf->buffer)
+        return;
     struct wlr_buffer *buf = &surf->buffer->base;
     wlr_buffer_lock(buf);
     closeBuffer = buf;
@@ -126,7 +129,8 @@ void Toplevel::createCloseSnapshot() {
         // fallback to sceneTree itself
         parent = sceneTree;
     }
-    if (!parent) return;
+    if (!parent)
+        return;
     closeSnapshot = wlr_scene_buffer_create(parent, buf);
     if (closeSnapshot) {
         // Make snapshot non-interactive so pointer events fall through to windows underneath

@@ -114,7 +114,8 @@ void Engine::onOutputAdded(struct wlr_output *output)
             scaleProbe.scale = def.scale;
         }
         desiredScale = config->getOutputScale(output, scaleProbe);
-        if (desiredScale < 0.5) desiredScale = 1.0;
+        if (desiredScale < 0.5)
+            desiredScale = 1.0;
         wlr_log(WLR_INFO, "Output %s: scale %.2f", oid.c_str(), desiredScale);
         wlr_output_state_set_scale(&state, (float)desiredScale);
     }
@@ -122,8 +123,10 @@ void Engine::onOutputAdded(struct wlr_output *output)
     // Try config mode first if present
     if (hasEntry && entry.width > 0 && entry.height > 0) {
         int refresh_mhz = entry.refresh > 0 ? (int)(entry.refresh * 1000) : 0;
-        if (refresh_mhz == 0 && preferred) refresh_mhz = preferred->refresh;
-        if (refresh_mhz == 0) refresh_mhz = (int)(def.refresh * 1000);
+        if (refresh_mhz == 0 && preferred)
+            refresh_mhz = preferred->refresh;
+        if (refresh_mhz == 0)
+            refresh_mhz = (int)(def.refresh * 1000);
         wlr_output_state_set_custom_mode(&state, entry.width, entry.height, refresh_mhz);
         wlr_log(WLR_INFO, "Output %s: trying config mode %dx%d@%d mHz", oid.c_str(), entry.width, entry.height, refresh_mhz);
     } else if (preferred) {
@@ -134,8 +137,10 @@ void Engine::onOutputAdded(struct wlr_output *output)
         int h = hasEntry && entry.height > 0 ? entry.height : def.height;
         double ref = hasEntry && entry.refresh > 0 ? entry.refresh : def.refresh;
         int refresh_mhz = (int)(ref * 1000);
-        if (w <= 0) w = output->width ? output->width : 1280;
-        if (h <= 0) h = output->height ? output->height : 720;
+        if (w <= 0)
+            w = output->width ? output->width : 1280;
+        if (h <= 0)
+            h = output->height ? output->height : 720;
         wlr_output_state_set_custom_mode(&state, w, h, refresh_mhz);
         wlr_log(WLR_INFO, "Output %s: using fallback custom mode %dx%d@%d", oid.c_str(), w, h, refresh_mhz);
     }
@@ -188,7 +193,14 @@ void Engine::onOutputAdded(struct wlr_output *output)
         struct wlr_box usable = usableAreaForOutput(out->get());
         if (decorManager) {
             int outer = decorManager->config().outerGap;
-            if (outer>0) { usable.x+=outer; usable.y+=outer; usable.width-=2*outer; usable.height-=2*outer; if(usable.width<0) usable.width=0; if(usable.height<0) usable.height=0; }
+if (outer>0) {
+                usable.x+=outer;
+                usable.y+=outer;
+                usable.width-=2*outer;
+                usable.height-=2*outer;
+                if(usable.width<0) usable.width=0;
+                if(usable.height<0) usable.height=0;
+            }
         }
         // Workspace switch animation: window-layer-only by default, uses slide/cube/fade variants
         bool shouldAnim = config && config->animations.enabled && config->animations.pairs.find("workspaceSwitch") != config->animations.pairs.end();
@@ -227,13 +239,15 @@ void Engine::onOutputAdded(struct wlr_output *output)
         int maxFps = 60;
         for (Output *o : outputs) {
             int fps = 0;
-            if (o->get()->refresh) fps = (int)(o->get()->refresh / 1000.0 + 0.5);
+            if (o->get()
+                ->refresh) fps = (int)std::lround(o->get()->refresh / 1000.0);
             else if (o->get()->current_mode) fps = o->get()->current_mode->refresh / 1000;
-            if (fps > maxFps) maxFps = fps;
+            if (fps > maxFps)
+                maxFps = fps;
         }
         // also consider the new output itself if not yet in list? already added
         animManager->setMaxFps(maxFps);
-        wlr_log(WLR_INFO, "Animation max FPS updated to %d (outputs %zu)", maxFps, outputs.size());
+        wlr_log(WLR_INFO, "Animation max FPS updated to %d (outputs %zu)", maxFps, static_cast<size_t>(outputs.size()));
     }
 }
 
@@ -252,7 +266,8 @@ void Engine::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
     Toplevel *toplevel = new Toplevel(this, xtoplevel, tree);
     wlr_log(WLR_INFO, "  created Toplevel %p id %lu", (void*)toplevel, (unsigned long)toplevel->id);
     toplevels.append(toplevel);
-    if (decorManager) decorManager->createFor(toplevel);
+    if (decorManager)
+        decorManager->createFor(toplevel);
 
     connect(toplevel, &Toplevel::mapped, this, [this, toplevel]() {
         onToplevelMapped(toplevel);
@@ -261,7 +276,8 @@ void Engine::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
         onToplevelUnmapped(toplevel);
     });
     connect(toplevel, &Toplevel::moveRequested, this, [this, toplevel]() {
-        if (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel)) return;
+        if (layout->isFullscreen(toplevel)
+            || layout->isMaximized(toplevel)) return;
         cursorMgrObj->beginInteractive(toplevel, CURSOR_MOVE, 0);
         int ws = layout->getWindowWorkspace(toplevel);
         if (ws > 0 && layout->getWorkspaceLayoutMode(ws) == LayoutManager::Mode::Tiling) {
@@ -278,7 +294,8 @@ void Engine::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
         }
     });
     connect(toplevel, &Toplevel::resizeRequested, this, [this, toplevel](uint32_t edges) {
-        if (layout->isFullscreen(toplevel) || layout->isMaximized(toplevel)) return;
+        if (layout->isFullscreen(toplevel)
+            || layout->isMaximized(toplevel)) return;
         // Guard: tiling/monowindow with single window must not resize/drag
         int ws = layout->getWindowWorkspace(toplevel);
         if (ws >= 0) {
@@ -326,12 +343,18 @@ void Engine::onToplevelAdded(struct wlr_xdg_toplevel *xtoplevel)
             // Defer actual removal until close animation finishes (keeps buffer visible)
             return;
         }
-        if (decorManager) decorManager->removeFor(toplevel);
+        if (decorManager)
+            decorManager->removeFor(toplevel);
         int ws = layout->getWindowWorkspace(toplevel);
         toplevels.removeOne(toplevel);
         layout->removeWindow(toplevel);
-        if (ws > 0) for (Output *out : outputs) if (out->getWorkspace() == ws) arrangeForOutput(out);
-        else rearrangeTiled();
+        if (ws > 0) {
+            for (Output *out : outputs) {
+                if (out->getWorkspace() == ws) arrangeForOutput(out);
+            }
+        } else {
+            rearrangeTiled();
+        }
     });
 }
 
@@ -350,7 +373,8 @@ void Engine::onPopupAdded(struct wlr_xdg_popup *xpopup)
 void Engine::onLayerAdded(struct wlr_layer_surface_v1 *lsurface)
 {
     if (lsurface->output == nullptr) {
-        if (outputs.isEmpty()) return;
+        if (outputs.isEmpty()
+            ) return;
         lsurface->output = outputs.first()->get();
     }
     wlr_log(WLR_INFO, "New layer surface (layer %d, %dx%d)",
@@ -408,7 +432,10 @@ void Engine::onToplevelMapped(Toplevel *toplevel)
         struct wlr_xdg_toplevel *prev = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
         if (prev) {
             for (Toplevel *t : toplevels) {
-                if (t->get() == prev) { focusedBefore = t; break; }
+if (t->get() == prev) {
+                    focusedBefore = t;
+                    break;
+                }
             }
         }
     }
@@ -416,9 +443,14 @@ void Engine::onToplevelMapped(Toplevel *toplevel)
     int ws = outputs.isEmpty() ? 1 : outputs.first()->getWorkspace();
     struct wlr_box usable = {0,0,1920,1080};
     Output *outForWs = nullptr;
-    for (Output *o : outputs) if (o->getWorkspace() == ws) { outForWs = o; break; }
-    if (!outForWs && !outputs.isEmpty()) outForWs = outputs.first();
-    if (outForWs) usable = usableAreaForOutput(outForWs->get());
+for (Output *o : outputs) if (o->getWorkspace() == ws) {
+        outForWs = o;
+        break;
+    }
+    if (!outForWs && !outputs.isEmpty()
+        ) outForWs = outputs.first();
+    if (outForWs)
+        usable = usableAreaForOutput(outForWs->get());
     wlr_log(WLR_INFO, "  ws %d usable %d,%d %dx%d", ws, usable.x, usable.y, usable.width, usable.height);
     double cx = cursor ? cursor->x : usable.x + usable.width/2.0;
     double cy = cursor ? cursor->y : usable.y + usable.height/2.0;
@@ -428,7 +460,7 @@ void Engine::onToplevelMapped(Toplevel *toplevel)
     std::unordered_map<Toplevel*, struct wlr_box> beforeTiling;
     if (wsMode == LayoutManager::Mode::Tiling && config && config->animations.enabled) {
         beforeTiling = layout->snapshotGeometries(ws, usable);
-        wlr_log(WLR_INFO, "  beforeTiling size %zu", beforeTiling.size());
+        wlr_log(WLR_INFO, "  beforeTiling size %zu", static_cast<size_t>(beforeTiling.size()));
         for(auto &kv : beforeTiling) wlr_log(WLR_INFO, "    before tl %p id %lu %d,%d %dx%d", (void*)kv.first, (unsigned long)kv.first->id, kv.second.x, kv.second.y, kv.second.width, kv.second.height);
     }
     if (wsMode == LayoutManager::Mode::Tiling) {
@@ -441,15 +473,17 @@ void Engine::onToplevelMapped(Toplevel *toplevel)
     std::unordered_map<Toplevel*, struct wlr_box> afterTiling;
     if (wsMode == LayoutManager::Mode::Tiling && config && config->animations.enabled) {
         afterTiling = layout->snapshotGeometries(ws, usable);
-        wlr_log(WLR_INFO, "  afterTiling size %zu", afterTiling.size());
+        wlr_log(WLR_INFO, "  afterTiling size %zu", static_cast<size_t>(afterTiling.size()));
         for(auto &kv : afterTiling) wlr_log(WLR_INFO, "    after tl %p id %lu %d,%d %dx%d", (void*)kv.first, (unsigned long)kv.first->id, kv.second.x, kv.second.y, kv.second.width, kv.second.height);
         auto it = config->animations.pairs.find("tilingMove");
         if (it != config->animations.pairs.end() && it->second.start.enabled && it->second.start.duration>0) {
             for(auto &kv : afterTiling) {
                 Toplevel *tl = kv.first;
-                if (tl == toplevel) continue;
+                if (tl == toplevel)
+                    continue;
                 auto bit = beforeTiling.find(tl);
-                if (bit == beforeTiling.end()) continue;
+                if (bit == beforeTiling.end()
+                    ) continue;
                 struct wlr_box from = bit->second;
                 struct wlr_box to = kv.second;
                 if (from.x==to.x && from.y==to.y && from.width==to.width && from.height==to.height) {
@@ -468,11 +502,14 @@ void Engine::onToplevelMapped(Toplevel *toplevel)
             // Update decorations for new window
             if (decorManager) {
                 for (Toplevel *tl : toplevels) {
-                    if (layout->getWindowWorkspace(tl) != ws) continue;
+                    if (layout->getWindowWorkspace(tl)
+                        != ws) continue;
                     struct wlr_box box;
                     bool has = layout->getWindowGeometry(tl, ws, usable, box);
-                    if (!has) has = layout->getWindowGeometry(tl, box);
-                    if (!has) continue;
+                    if (!has)
+                        has = layout->getWindowGeometry(tl, box);
+                    if (!has)
+                        continue;
                     if (auto *dec = decorManager->decorationFor(tl)) {
                         dec->updateGeometry(box.x, box.y, box.width, box.height);
                     }
@@ -487,18 +524,21 @@ void Engine::onToplevelMapped(Toplevel *toplevel)
         if (outForWs && decorManager) {
             struct wlr_box box;
             if (layout->getWindowGeometry(toplevel, ws, usable, box)) {
-                if (auto *dec = decorManager->decorationFor(toplevel)) dec->updateGeometry(box.x, box.y, box.width, box.height);
+                if (auto *dec = decorManager->decorationFor(toplevel)
+                    ) dec->updateGeometry(box.x, box.y, box.width, box.height);
             }
         }
         // Schedule frame for animation
-        if (animPool) animPool->onFrame();
+        if (animPool)
+            animPool->onFrame();
     }
     // Animate window open (paired start)
     {
         struct wlr_box finalBox;
         bool has1 = layout->getWindowGeometry(toplevel, ws, usable, finalBox);
         bool has2 = false;
-        if (!has1) has2 = layout->getWindowGeometry(toplevel, finalBox);
+        if (!has1)
+            has2 = layout->getWindowGeometry(toplevel, finalBox);
         wlr_log(WLR_INFO, "  has1 %d has2 %d finalBox %d,%d %dx%d hasBox %d", has1, has2, finalBox.x, finalBox.y, finalBox.width, finalBox.height, has1||has2);
         if (has1 || has2) {
             animateWindowOpen(toplevel, finalBox);
@@ -527,11 +567,13 @@ void Engine::onToplevelUnmapped(Toplevel *toplevel)
 
 void Engine::startCloseAnimation(Toplevel *toplevel)
 {
-    if (!toplevel) return;
+    if (!toplevel)
+        return;
     wlr_log(WLR_INFO, "Engine::startCloseAnimation tl %p id %lu", (void*)toplevel, (unsigned long)toplevel->id);
     dumpDebugState();
     // Cancel any existing animation for this window
-    if (animPool) animPool->removeAnimation(toplevel->id);
+    if (animPool)
+        animPool->removeAnimation(toplevel->id);
     int wsBefore = layout->getWindowWorkspace(toplevel);
     struct wlr_box curBox;
     bool hasBox = layout->getWindowGeometry(toplevel, curBox);
@@ -542,7 +584,8 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
         layout->removeWindow(toplevel);
         rearrangeTiled();
         emit toplevelUnmapped(toplevel);
-        if (toplevel->getSceneTree()) toplevel->getSceneTree()->node.data = nullptr;
+        if (toplevel->getSceneTree()
+            ) toplevel->getSceneTree()->node.data = nullptr;
         emit toplevel->destroyed();
         toplevel->destroyCloseSnapshot();
         delete toplevel;
@@ -554,11 +597,11 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
         auto it = config->animations.pairs.find("window");
         if (it != config->animations.pairs.end()) {
             wlr_log(WLR_INFO, "Close anim check: hasEnd %d", it->second.hasEnd());
-            if (it->second.hasEnd()) {
+            if (it->second.end.has_value()) {
                 wlr_log(WLR_INFO, "Close anim end def enabled %d duration %d style %d", it->second.end->enabled, it->second.end->duration, (int)it->second.end->style);
             }
         }
-        if (it != config->animations.pairs.end() && it->second.hasEnd() && it->second.end->enabled && it->second.end->duration > 0) {
+        if (it != config->animations.pairs.end() && it->second.end.has_value() && it->second.end->enabled && it->second.end->duration > 0) {
             shouldAnimate = true;
             closeDef = &*it->second.end;
         }
@@ -568,9 +611,11 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
         toplevels.removeOne(toplevel);
         layout->removeWindow(toplevel);
         rearrangeTiled();
-        if (wsBefore > 0) for (Output *out : outputs) if (out->getWorkspace() == wsBefore) arrangeForOutput(out);
+        if (wsBefore > 0)
+            for (Output *out : outputs) if (out->getWorkspace() == wsBefore) arrangeForOutput(out);
         emit toplevelUnmapped(toplevel);
-        if (toplevel->getSceneTree()) toplevel->getSceneTree()->node.data = nullptr;
+        if (toplevel->getSceneTree()
+            ) toplevel->getSceneTree()->node.data = nullptr;
         emit toplevel->destroyed();
         toplevel->destroyCloseSnapshot();
         delete toplevel;
@@ -592,11 +637,13 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
             for (Output *out : outputs) if (out->getWorkspace() == ws) arrangeForOutput(out);
         }
         emit toplevelUnmapped(toplevel);
-        if (toplevel->getSceneTree()) wlr_scene_node_set_enabled(&toplevel->getSceneTree()->node, false);
+        if (toplevel->getSceneTree()
+            ) wlr_scene_node_set_enabled(&toplevel->getSceneTree()->node, false);
     }
 
-    auto finalCleanup = [this, toplevel]() {
-        if (!toplevel->closeAnimationRunning) return;
+    auto finalCleanup = [toplevel]() {
+        if (!toplevel->closeAnimationRunning)
+            return;
         wlr_log(WLR_INFO, "Close animation finished, final cleanup tl %p", (void*)toplevel);
         toplevel->closeAnimationRunning = false;
         toplevel->destroyCloseSnapshot();
@@ -623,12 +670,16 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
         std::array<float*,10> ptrs = {&toplevel->animOpacity, nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
         std::array<float,10> targets = {0.0f, 0,0,0,0,0,0,0,0,0};
         auto apply = [toplevel](){
-            if (toplevel->closeSnapshot) wlr_scene_buffer_set_opacity(toplevel->closeSnapshot, toplevel->animOpacity);
+            if (toplevel->closeSnapshot)
+                wlr_scene_buffer_set_opacity(toplevel->closeSnapshot, toplevel->animOpacity);
         };
         auto *inst = animPool->addInstanceWithDef<float>(*toplevel, ptrs, targets, 1, *closeDef, apply);
         if (inst) {
-            if (animPool) animPool->onFrame();
-            connect(inst, &Resource::resourceDestroyed, this, [finalCleanup](Resource*){ finalCleanup(); });
+            if (animPool)
+                animPool->onFrame();
+            connect(inst, &Resource::resourceDestroyed, this, [finalCleanup](Resource*){
+                finalCleanup();
+            });
         } else {
             finalCleanup();
         }
@@ -676,9 +727,14 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
     auto *boxInst = animPool->addInstanceWithDef<int>(*toplevel, ptrs, targets, 4, *closeDef, applyBox);
     auto *opaInst = animPool->addInstanceWithDef<float>(*toplevel, oPtrs, oTargets, 1, *closeDef, applyOpacity);
     if (boxInst && opaInst) {
-        if (animPool) animPool->onFrame();
-        connect(boxInst, &Resource::resourceDestroyed, this, [finalCleanup](Resource*){ finalCleanup(); });
-        connect(opaInst, &Resource::resourceDestroyed, this, [finalCleanup](Resource*){ finalCleanup(); });
+        if (animPool)
+            animPool->onFrame();
+        connect(boxInst, &Resource::resourceDestroyed, this, [finalCleanup](Resource*){
+            finalCleanup();
+        });
+        connect(opaInst, &Resource::resourceDestroyed, this, [finalCleanup](Resource*){
+            finalCleanup();
+        });
     } else {
         finalCleanup();
     }
@@ -688,12 +744,14 @@ void Engine::startCloseAnimation(Toplevel *toplevel)
 
 void Engine::focusToplevel(Toplevel *toplevel)
 {
-    if (toplevel == nullptr) return;
+    if (toplevel == nullptr)
+        return;
 
     struct wlr_surface *surface = toplevel->get()->base->surface;
     struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
 
-    if (prev_surface == surface) return;
+    if (prev_surface == surface)
+        return;
 
     if (prev_surface) {
         struct wlr_xdg_toplevel *prev = wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
@@ -713,7 +771,8 @@ void Engine::focusToplevel(Toplevel *toplevel)
     toplevels.prepend(toplevel);
     wlr_xdg_toplevel_set_activated(toplevel->get(), true);
     layout->raiseWindow(toplevel);
-    if (decorManager) decorManager->setFocusedToplevel(toplevel);
+    if (decorManager)
+        decorManager->setFocusedToplevel(toplevel);
     // Focus animation (paired start, optional end)
     if (config && config->animations.enabled) {
         auto it = config->animations.pairs.find("focus");
@@ -745,7 +804,8 @@ void Engine::focusToplevel(Toplevel *toplevel)
 
 Output *Engine::outputForToplevel(Toplevel *toplevel)
 {
-    if (outputs.isEmpty()) return nullptr;
+    if (outputs.isEmpty()
+        ) return nullptr;
     if (toplevel && layout) {
         int ws = layout->getWindowWorkspace(toplevel);
         if (ws > 0) {
@@ -755,7 +815,8 @@ Output *Engine::outputForToplevel(Toplevel *toplevel)
     // Fallback: output containing cursor
     if (cursor && outputLayout) {
         struct wlr_output *wout = wlr_output_layout_output_at(outputLayout, cursor->x, cursor->y);
-        if (wout) for (Output *out : outputs) if (out->get() == wout) return out;
+        if (wout)
+            for (Output *out : outputs) if (out->get() == wout) return out;
     }
     return outputs.first();
 }
@@ -785,10 +846,13 @@ struct wlr_box Engine::usableAreaForOutput(struct wlr_output *wlr_output)
     struct wlr_box usable = full;
     for (LayerSurface *ls : layers) {
         struct wlr_layer_surface_v1 *l = ls->get();
-        if (l->output != wlr_output) continue;
-        if (!l->surface->mapped) continue;
+        if (l->output != wlr_output)
+            continue;
+        if (!l->surface->mapped)
+            continue;
         struct wlr_layer_surface_v1_state *state = &l->current;
-        if (state->exclusive_zone <= 0) continue;
+        if (state->exclusive_zone <= 0)
+            continue;
 
         // Prefer exclusive_edge if set, otherwise infer from anchor
         uint32_t anchor = state->anchor;
@@ -850,8 +914,10 @@ struct wlr_box Engine::usableAreaForOutput(struct wlr_output *wlr_output)
                 usable.width -= state->exclusive_zone + state->margin.right;
             }
         }
-        if (usable.width < 0) usable.width = 0;
-        if (usable.height < 0) usable.height = 0;
+        if (usable.width < 0)
+            usable.width = 0;
+        if (usable.height < 0)
+            usable.height = 0;
     }
     return usable;
 }
@@ -872,12 +938,20 @@ struct wlr_box Engine::fullAreaForOutput(struct wlr_output *wlr_output)
 
 void Engine::arrangeForOutput(Output *out)
 {
-    if (!out) return;
+    if (!out)
+        return;
     struct wlr_box usable = usableAreaForOutput(out->get());
     // Apply decoration gaps to usable area (outer_gap shrinks, inner handled by layout spacing if configured)
     if (decorManager) {
         int outer = decorManager->config().outerGap;
-        if (outer > 0) { usable.x += outer; usable.y += outer; usable.width -= 2*outer; usable.height -= 2*outer; if (usable.width<0) usable.width=0; if (usable.height<0) usable.height=0; }
+if (outer > 0) {
+            usable.x += outer;
+            usable.y += outer;
+            usable.width -= 2*outer;
+            usable.height -= 2*outer;
+            if (usable.width<0) usable.width=0;
+            if (usable.height<0) usable.height=0;
+        }
     }
     struct wlr_box full = fullAreaForOutput(out->get());
     // Snapshot before for tilingMove animation (generic lerp with window-layer-only)
@@ -887,7 +961,8 @@ void Engine::arrangeForOutput(Output *out)
     if (doTilingAnim) {
         // Capture current scene positions as animation start points
         for (Toplevel *tl : toplevels) {
-            if (layout->getWindowWorkspace(tl) != ws) continue;
+            if (layout->getWindowWorkspace(tl)
+                != ws) continue;
             struct wlr_box b;
             b.x = tl->getSceneTree()->node.x;
             b.y = tl->getSceneTree()->node.y;
@@ -913,17 +988,21 @@ void Engine::arrangeForOutput(Output *out)
     // Sync window decorations geometries after arrange
     if (decorManager) {
         for (Toplevel *tl : toplevels) {
-            if (layout->getWindowWorkspace(tl) != out->getWorkspace()) continue;
+            if (layout->getWindowWorkspace(tl)
+                != out->getWorkspace()) continue;
             struct wlr_box box;
             bool has = layout->getWindowGeometry(tl, out->getWorkspace(), usable, box);
-            if (!has) has = layout->getWindowGeometry(tl, box);
+            if (!has)
+                has = layout->getWindowGeometry(tl, box);
             if (!has) {
                 // fallback to scene node pos + xdg geometry
                 auto *node = tl->getSceneTree();
                 struct wlr_box *geo = &tl->get()->base->geometry;
                 box = {node->node.x + geo->x, node->node.y + geo->y, geo->width, geo->height};
-                if (box.width==0) box.width=800;
-                if (box.height==0) box.height=600;
+                if (box.width==0)
+                    box.width=800;
+                if (box.height==0)
+                    box.height=600;
             }
             if (auto *dec = decorManager->decorationFor(tl)) {
                 dec->updateGeometry(box.x, box.y, box.width, box.height);
@@ -932,7 +1011,8 @@ void Engine::arrangeForOutput(Output *out)
                 bool isMx = layout->isMaximized(tl);
                 // For fullscreen, hide borders/title; for maximized keep border but no outer gap
                 dec->setVisible(!(isFs));
-                if (isMx && decorManager->config().border.enabled) dec->setVisible(true);
+                if (isMx && decorManager->config()
+                    .border.enabled) dec->setVisible(true);
             }
         }
     }
@@ -940,9 +1020,11 @@ void Engine::arrangeForOutput(Output *out)
     // Handle layer visibility for fullscreen (hide shell) and ensure stacking respects popupTree
     bool isFs = layout->getFullscreenWindow(ws2) != nullptr;
     for (LayerSurface *ls : layers) {
-        if (ls->get()->output != out->get()) continue;
+        if (ls->get()
+            ->output != out->get()) continue;
         struct wlr_scene_layer_surface_v1 *sl = ls->getSceneLayer();
-        if (!sl) continue;
+        if (!sl)
+            continue;
         if (isFs) {
             wlr_scene_node_set_enabled(&sl->tree->node, false);
         } else {
@@ -984,40 +1066,47 @@ void Engine::rearrangeTiled()
 
 bool Engine::setFullscreen(Toplevel *toplevel, bool fullscreen)
 {
-    if (!toplevel || !layout) return false;
+    if (!toplevel || !layout)
+        return false;
     int ws = layout->getWindowWorkspace(toplevel);
-    if (ws < 0) return false;
+    if (ws < 0)
+        return false;
     Output *out = outputForToplevel(toplevel);
     struct wlr_box full = out ? fullAreaForOutput(out->get()) : (struct wlr_box){0,0,1920,1080};
     struct wlr_box beforeBox; bool hasBefore = layout->getWindowGeometry(toplevel, beforeBox);
     bool changed = layout->setFullscreen(toplevel, fullscreen, full);
     if (!changed) {
         wlr_xdg_toplevel_set_fullscreen(toplevel->get(), fullscreen);
-        if (out) arrangeForOutput(out);
+        if (out)
+            arrangeForOutput(out);
         wlr_xdg_surface_schedule_configure(toplevel->get()->base);
         return false;
     }
     wlr_xdg_toplevel_set_fullscreen(toplevel->get(), fullscreen);
     if (fullscreen) {
-        if (layout->isMaximized(toplevel)) layout->setMaximized(toplevel, false);
+        if (layout->isMaximized(toplevel)
+            ) layout->setMaximized(toplevel, false);
         wlr_xdg_toplevel_set_maximized(toplevel->get(), false);
     }
     for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
     wlr_xdg_surface_schedule_configure(toplevel->get()->base);
-    if (fullscreen) focusToplevel(toplevel);
+    if (fullscreen)
+        focusToplevel(toplevel);
     // animate fullscreen enter/exit if pair exists
     if (hasBefore && config && config->animations.enabled) {
         auto it = config->animations.pairs.find("fullscreen");
         if (it != config->animations.pairs.end()) {
             const AnimDef *def = nullptr;
-            if (fullscreen) def = &it->second.start;
+            if (fullscreen)
+                def = &it->second.start;
             else if (it->second.hasEnd()) def = &*it->second.end;
             if (def && def->enabled && def->duration>0) {
                 struct wlr_box afterBox = fullscreen ? full : beforeBox;
                 if (!fullscreen) {
                     // for exit, try to get tiled geometry after arrange
                     struct wlr_box tmp;
-                    if (layout->getWindowGeometry(toplevel, ws, usableAreaForOutput(out->get()), tmp)) afterBox = tmp;
+                    if (layout->getWindowGeometry(toplevel, ws, usableAreaForOutput(out->get()
+                        ), tmp)) afterBox = tmp;
                 }
                 animateBoxForToplevel(toplevel, beforeBox, afterBox, *def, fullscreen ? "fullscreenEnter:" : "fullscreenExit:");
             } else if (fullscreen && !it->second.hasEnd()) {
@@ -1030,24 +1119,30 @@ bool Engine::setFullscreen(Toplevel *toplevel, bool fullscreen)
 
 bool Engine::setMaximized(Toplevel *toplevel, bool maximized)
 {
-    if (!toplevel || !layout) return false;
+    if (!toplevel || !layout)
+        return false;
     int ws = layout->getWindowWorkspace(toplevel);
-    if (ws < 0) return false;
-    if (maximized && layout->isFullscreen(toplevel)) return false;
-    if (maximized && layout->getFullscreenWindow(ws)) return false;
+    if (ws < 0)
+        return false;
+    if (maximized && layout->isFullscreen(toplevel)
+        ) return false;
+    if (maximized && layout->getFullscreenWindow(ws)
+        ) return false;
     struct wlr_box beforeBoxMax; bool hasBeforeMax = layout->getWindowGeometry(toplevel, beforeBoxMax);
     bool changed = layout->setMaximized(toplevel, maximized);
     if (!changed) {
         wlr_xdg_toplevel_set_maximized(toplevel->get(), maximized);
         Output *out = outputForToplevel(toplevel);
-        if (out && layout->getWindowWorkspace(toplevel) == ws) arrangeForOutput(out);
+        if (out && layout->getWindowWorkspace(toplevel)
+            == ws) arrangeForOutput(out);
         wlr_xdg_surface_schedule_configure(toplevel->get()->base);
         return false;
     }
     wlr_xdg_toplevel_set_maximized(toplevel->get(), maximized);
     for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
     wlr_xdg_surface_schedule_configure(toplevel->get()->base);
-    if (maximized) focusToplevel(toplevel);
+    if (maximized)
+        focusToplevel(toplevel);
     if (hasBeforeMax && config && config->animations.enabled) {
         auto it = config->animations.pairs.find("maximize");
         if (it != config->animations.pairs.end()) {
@@ -1055,10 +1150,12 @@ bool Engine::setMaximized(Toplevel *toplevel, bool maximized)
             if (def && def->enabled && def->duration>0) {
                 struct wlr_box afterBox = beforeBoxMax;
                 Output *outM = outputForToplevel(toplevel);
-                if (maximized) afterBox = usableAreaForOutput(outM ? outM->get() : nullptr);
+                if (maximized)
+                    afterBox = usableAreaForOutput(outM ? outM->get() : nullptr);
                 else {
                     struct wlr_box tmp;
-                    if (layout->getWindowGeometry(toplevel, ws, usableAreaForOutput(outM?outM->get():nullptr), tmp)) afterBox = tmp;
+                    if (layout->getWindowGeometry(toplevel, ws, usableAreaForOutput(outM?outM->get()
+                        :nullptr), tmp)) afterBox = tmp;
                 }
                 animateBoxForToplevel(toplevel, beforeBoxMax, afterBox, *def, maximized ? "maximizeEnter:" : "maximizeExit:");
             }
@@ -1072,7 +1169,8 @@ bool Engine::setMaximized(Toplevel *toplevel, bool maximized)
 void Engine::addKeyboard(struct wlr_input_device *device)
 {
     Keyboard *kb = new Keyboard(device, seat);
-    if (config) kb->applyConfig(config->keyboard);
+    if (config)
+        kb->applyConfig(config->keyboard);
     keyboards.append(kb);
     connect(kb, &Keyboard::keyPressed, this, [this, kb](struct wlr_keyboard_key_event *event) {
         uint32_t keycode = event->keycode + 8;
@@ -1087,15 +1185,18 @@ void Engine::addKeyboard(struct wlr_input_device *device)
             for (int i = 0; i < nsyms && !handled; i++) {
                 xkb_keysym_t sym = syms[i];
                 const Keybind *kbnd = nullptr;
-                if (config) kbnd = config->findKeybind(modifiers, sym);
+                if (config)
+                    kbnd = config->findKeybind(modifiers, sym);
                 if (kbnd) {
                     const std::string &act = kbnd->action;
                     if (act == "quit" || act == "exit" || act == "terminate") {
                         wl_display_terminate(display);
                     } else if (act == "focus_prev") {
-                        if (toplevels.size() >= 2) focusToplevel(toplevels.last());
+                        if (toplevels.size()
+                            >= 2) focusToplevel(toplevels.last());
                     } else if (act == "focus_next") {
-                        if (!toplevels.isEmpty()) focusToplevel(toplevels.first());
+                        if (!toplevels.isEmpty()
+                            ) focusToplevel(toplevels.first());
                     } else if (act == "toggle_layout" || act == "toggle") {
                         if (!outputs.isEmpty()) {
                             Output *out = outputs.first();
@@ -1114,19 +1215,24 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                     } else if (act == "goto_workspace") {
                         if (!outputs.isEmpty() && !kbnd->arg.empty()) {
                             int ws = std::atoi(kbnd->arg.c_str());
-                            if (ws > 0) outputs.first()->setWorkspace(ws);
+                            if (ws > 0)
+                                outputs.first()->setWorkspace(ws);
                         }
                     } else if (act == "close_window" || act == "kill") {
                         if (seat->keyboard_state.focused_surface) {
                             struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
-                            if (tl) wlr_xdg_toplevel_send_close(tl);
+                            if (tl)
+                                wlr_xdg_toplevel_send_close(tl);
                         }
                     } else if (act == "swap_orientation" || act == "toggle_split" || act == "toggle_orientation") {
                         Toplevel *focused = nullptr;
                         if (seat->keyboard_state.focused_surface) {
                             struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
                             if (tl) {
-                                for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+for (Toplevel *t : toplevels) if (t->get() == tl) {
+                                    focused = t;
+                                    break;
+                                }
                             }
                         }
                         if (focused) {
@@ -1147,20 +1253,29 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                         if (seat->keyboard_state.focused_surface) {
                             struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
                             if (tl) {
-                                for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+for (Toplevel *t : toplevels) if (t->get() == tl) {
+                                    focused = t;
+                                    break;
+                                }
                             }
                         }
                         if (focused) {
                             int ws = layout->getWindowWorkspace(focused);
                             if (ws > 0) {
                                 struct wlr_box usable = {0,0,1920,1080};
-                                for (Output *o : outputs) if (o->getWorkspace() == ws) { usable = usableAreaForOutput(o->get()); break; }
+for (Output *o : outputs) if (o->getWorkspace() == ws) {
+                                    usable = usableAreaForOutput(o->get());
+                                    break;
+                                }
                                 if (usable.width==0) {
-                                    for (Output *o : outputs) if (!outputs.isEmpty()) { usable = usableAreaForOutput(outputs.first()->get()); break; }
+                                    if (!outputs.isEmpty()) {
+                                        usable = usableAreaForOutput(outputs.first()->get());
+                                    }
                                 }
                                 // Determine target state: toggle unless arg forces
                                 bool makeFloating = !layout->isFloating(focused);
-                                if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1") makeFloating = true;
+                                if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1")
+                                    makeFloating = true;
                                 else if (kbnd->arg == "off" || kbnd->arg == "false" || kbnd->arg == "0") makeFloating = false;
                                 // Allow floating in any mode but most useful in tiling; still handle.
                                 auto mode = layout->getWorkspaceLayoutMode(ws);
@@ -1178,7 +1293,8 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                                                     struct wlr_box afterFloat = beforeFloat;
                                                     struct wlr_box tmp; if (layout->getWindowGeometry(focused, ws, usable, tmp)) afterFloat = tmp; else if (layout->getWindowGeometry(focused, tmp)) afterFloat = tmp;
                                                     struct wlr_box s = boxForStyle(def->style, afterFloat, true);
-                                                    if (makeFloating) animateBoxForToplevel(focused, s, afterFloat, *def, "floatingEnter:");
+                                                    if (makeFloating)
+                                                        animateBoxForToplevel(focused, s, afterFloat, *def, "floatingEnter:");
                                                     else {
                                                         struct wlr_box e = boxForStyle(def->style, beforeFloat, false);
                                                         animateBoxForToplevel(focused, beforeFloat, e, *def, "floatingExit:");
@@ -1198,7 +1314,8 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                                 } else {
                                     // In floating/monowindow mode, unfloating means tiling
                                     bool ok = layout->setFloating(focused, makeFloating, usable);
-                                    if (ok) for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
+                                    if (ok)
+                                        for (Output *o : outputs) if (o->getWorkspace() == ws) arrangeForOutput(o);
                                 }
                                 wlr_log(WLR_INFO, "toggle_floating: %s ws %d floating=%d", focused->get()->title ? focused->get()->title : "window", ws, layout->isFloating(focused));
                             }
@@ -1209,12 +1326,16 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                         Toplevel *focused = nullptr;
                         if (seat->keyboard_state.focused_surface) {
                             struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
-                            if (tl) for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+if (tl) for (Toplevel *t : toplevels) if (t->get() == tl) {
+                                focused = t;
+                                break;
+                            }
                         }
                         if (focused) {
                             bool isFs = layout->isFullscreen(focused);
                             bool want = !isFs;
-                            if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1") want = true;
+                            if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1")
+                                want = true;
                             else if (kbnd->arg == "off" || kbnd->arg == "false" || kbnd->arg == "0") want = false;
                             setFullscreen(focused, want);
                             wlr_log(WLR_INFO, "toggle_fullscreen: %s fullscreen=%d", focused->get()->title ? focused->get()->title : "window", want);
@@ -1225,12 +1346,16 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                         Toplevel *focused = nullptr;
                         if (seat->keyboard_state.focused_surface) {
                             struct wlr_xdg_toplevel *tl = wlr_xdg_toplevel_try_from_wlr_surface(seat->keyboard_state.focused_surface);
-                            if (tl) for (Toplevel *t : toplevels) if (t->get() == tl) { focused = t; break; }
+if (tl) for (Toplevel *t : toplevels) if (t->get() == tl) {
+                                focused = t;
+                                break;
+                            }
                         }
                         if (focused) {
                             bool isMx = layout->isMaximized(focused);
                             bool want = !isMx;
-                            if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1") want = true;
+                            if (kbnd->arg == "on" || kbnd->arg == "true" || kbnd->arg == "1")
+                                want = true;
                             else if (kbnd->arg == "off" || kbnd->arg == "false" || kbnd->arg == "0") want = false;
                             // If fullscreen active, refuse maximize
                             if (want && layout->isFullscreen(focused)) {
@@ -1276,7 +1401,8 @@ void Engine::addKeyboard(struct wlr_input_device *device)
                             if (!outputs.isEmpty()) {
                                 Output *out = outputs.first();
                                 int ws = out->getWorkspace();
-                                if (ws > 1) out->setWorkspace(1);
+                                if (ws > 1)
+                                    out->setWorkspace(1);
                             }
                             handled = true; break;
                         }
@@ -1298,7 +1424,8 @@ void Engine::addKeyboard(struct wlr_input_device *device)
 void Engine::addMouse(struct wlr_input_device *device)
 {
     Mouse *mouse = new Mouse(device);
-    if (config) mouse->applyConfig(config->mouse);
+    if (config)
+        mouse->applyConfig(config->mouse);
     mice.append(mouse);
     wlr_cursor_attach_input_device(cursor, device);
     if (config && config->mouse.speed != 0) {
@@ -1396,16 +1523,19 @@ Engine::Engine(const Astick &app, Config *cfg)
         dc.border.width = d.border.width;
         dc.border.radius = d.border.radius;
         dc.border.activeColor = QColor(QString::fromStdString(d.border.active_color));
-        if (!dc.border.activeColor.isValid()) dc.border.activeColor = QColor("#ff5500");
+        if (!dc.border.activeColor.isValid()
+            ) dc.border.activeColor = QColor("#ff5500");
         dc.border.inactiveColor = QColor(QString::fromStdString(d.border.inactive_color));
-        if (!dc.border.inactiveColor.isValid()) dc.border.inactiveColor = QColor("#3a3a3a");
+        if (!dc.border.inactiveColor.isValid()
+            ) dc.border.inactiveColor = QColor("#3a3a3a");
         dc.border.gradient.enabled = d.border.gradient.enabled;
         dc.border.gradient.angle = d.border.gradient.angle;
         dc.border.gradient.animate = d.border.gradient.animate;
         dc.border.gradient.colors.clear();
         for (auto &cstr : d.border.gradient.colors) {
             QColor c(QString::fromStdString(cstr));
-            if (c.isValid()) dc.border.gradient.colors.append(c);
+            if (c.isValid()
+                ) dc.border.gradient.colors.append(c);
         }
         dc.border.animate = d.border.animate;
         dc.border.animationDuration = d.border.animation_duration;
@@ -1429,7 +1559,8 @@ Engine::Engine(const Astick &app, Config *cfg)
     connect(cursorMgrObj, &CursorManager::interactiveEnded, this, [this](Toplevel *toplevel, CursorMode mode) {
         if (mode == CURSOR_MOVE && toplevel == detachedWindow && detachedFromWorkspace > 0) {
             Output *out = outputForToplevel(toplevel);
-            if (!out && !outputs.isEmpty()) out = outputs.first();
+            if (!out && !outputs.isEmpty()
+                ) out = outputs.first();
             if (out) {
                 struct wlr_box usable = usableAreaForOutput(out->get());
                 double cx = cursor ? cursor->x : usable.x + usable.width/2.0;
@@ -1441,7 +1572,9 @@ Engine::Engine(const Astick &app, Config *cfg)
                     ratioHint = layout->getDefaultSplitRatio();
                 }
                 // Use BSP cursor insertion: closest leaf to mouse, preserving ratio
-                layout->insertWindowAtCursor(toplevel, detachedFromWorkspace, usable, cx, cy, ratioHint);
+                if (layout) {
+                    layout->insertWindowAtCursor(toplevel, detachedFromWorkspace, usable, cx, cy, ratioHint);
+                }
             } else {
                 layout->addWindow(toplevel, detachedFromWorkspace);
             }
@@ -1452,8 +1585,10 @@ Engine::Engine(const Astick &app, Config *cfg)
         } else if (mode == CURSOR_RESIZE && toplevel) {
             // Hyprland-like: ratio already updated during drag via handleResize, just ensure final sync
             Output *out = outputForToplevel(toplevel);
-            if (!out && !outputs.isEmpty()) out = outputs.first();
-            if (out) arrangeForOutput(out);
+            if (!out && !outputs.isEmpty()
+                ) out = outputs.first();
+            if (out)
+                arrangeForOutput(out);
         }
     });
 
@@ -1495,13 +1630,20 @@ Engine::~Engine()
         for (Keyboard *k : keyboards) delete k;
         for (Mouse *m : mice) delete m;
     }
-    if (cursorMgr) wlr_xcursor_manager_destroy(cursorMgr);
-    if (scene) wlr_scene_node_destroy(&scene->tree.node);
-    if (cursor) wlr_cursor_destroy(cursor);
-    if (allocator) wlr_allocator_destroy(allocator);
-    if (renderer) wlr_renderer_destroy(renderer);
-    if (backend) wlr_backend_destroy(backend);
-    if (display) wl_display_destroy(display);
+    if (cursorMgr)
+        wlr_xcursor_manager_destroy(cursorMgr);
+    if (scene)
+        wlr_scene_node_destroy(&scene->tree.node);
+    if (cursor)
+        wlr_cursor_destroy(cursor);
+    if (allocator)
+        wlr_allocator_destroy(allocator);
+    if (renderer)
+        wlr_renderer_destroy(renderer);
+    if (backend)
+        wlr_backend_destroy(backend);
+    if (display)
+        wl_display_destroy(display);
     initialized = false;
 }
 
@@ -1524,15 +1666,17 @@ void Engine::run()
 
 void Engine::closePopup(Popup *popup)
 {
-    if (popup == nullptr) return;
+    if (popup == nullptr)
+        return;
     wlr_log(WLR_INFO, "Closing popup");
     wlr_xdg_popup_destroy(popup->get());
 }
 
 void Engine::scheduleAllOutputs() {
-    wlr_log(WLR_INFO, "scheduleAllOutputs: scheduling %zu outputs", outputs.size());
+    wlr_log(WLR_INFO, "scheduleAllOutputs: scheduling %zu outputs", static_cast<size_t>(outputs.size()));
     for (Output *o : outputs) {
-        if (o && o->get()) wlr_output_schedule_frame(o->get());
+        if (o && o->get()
+            ) wlr_output_schedule_frame(o->get());
     }
 }
 
@@ -1644,7 +1788,7 @@ void Engine::animateBoxForToplevel(Toplevel *tl, struct wlr_box from, struct wlr
 }
 
 void Engine::animateTilingMove(const std::unordered_map<Toplevel*, struct wlr_box> &before, const std::unordered_map<Toplevel*, struct wlr_box> &after) {
-    wlr_log(WLR_INFO, "animateTilingMove: before %zu after %zu", before.size(), after.size());
+    wlr_log(WLR_INFO, "animateTilingMove: before %zu after %zu", static_cast<size_t>(before.size()), static_cast<size_t>(after.size()));
     if (!config || !config->animations.enabled) {
         wlr_log(WLR_INFO, "  no config or disabled");
         return;
@@ -1660,7 +1804,8 @@ void Engine::animateTilingMove(const std::unordered_map<Toplevel*, struct wlr_bo
     }
     const AnimDef &def = it->second.start;
     wlr_log(WLR_INFO, "  def enabled %d duration %d", def.enabled, def.duration);
-    if (!def.enabled || def.duration<=0) return;
+    if (!def.enabled || def.duration<=0)
+        return;
     for (auto &p : after) {
         Toplevel *tl = p.first;
         auto bit = before.find(tl);
@@ -1685,7 +1830,8 @@ void Engine::animateTilingMove(const std::unordered_map<Toplevel*, struct wlr_bo
 
 void Engine::animateWindowOpen(Toplevel *tl, const struct wlr_box &finalBox) {
     wlr_log(WLR_INFO, "animateWindowOpen: tl %p id %lu final %d,%d %dx%d", (void*)tl, tl ? (unsigned long)tl->id : 0, finalBox.x, finalBox.y, finalBox.width, finalBox.height);
-    if (!tl) return;
+    if (!tl)
+        return;
     if (!config || !config->animations.enabled) {
         wlr_log(WLR_INFO, "  no config or anim disabled");
         return;
@@ -1708,16 +1854,20 @@ void Engine::animateWindowOpen(Toplevel *tl, const struct wlr_box &finalBox) {
 }
 
 void Engine::animateWindowClose(Toplevel *tl, const struct wlr_box &curBox) {
-    if (!tl) return;
-    if (!config || !config->animations.enabled) return;
+    if (!tl)
+        return;
+    if (!config || !config->animations.enabled)
+        return;
     auto it = config->animations.pairs.find("window");
-    if (it==config->animations.pairs.end()) return;
+    if (it==config->animations.pairs.end()
+        ) return;
     if (!it->second.hasEnd()) {
         wlr_log(WLR_ERROR, "window animation reversible but missing end - skipping close anim");
         return;
     }
     const AnimDef &def = *it->second.end;
-    if (!def.enabled || def.duration<=0) return;
+    if (!def.enabled || def.duration<=0)
+        return;
     struct wlr_box end = boxForStyle(def.style, curBox, false);
     struct wlr_box startBox = curBox;
     // start at 96% size for scale styles to match open start
@@ -1735,14 +1885,19 @@ void Engine::animateWindowClose(Toplevel *tl, const struct wlr_box &curBox) {
 }
 
 void Engine::animatePopupOpen(Popup *popup) {
-    if (!popup || !popup->get() || !popup->get()->base || !popup->get()->base->data) return;
-    if (!config || !config->animations.enabled) return;
+    if (!popup || !popup->get()
+        || !popup->get()->base || !popup->get()->base->data) return;
+    if (!config || !config->animations.enabled)
+        return;
     auto it = config->animations.pairs.find("popup");
-    if (it==config->animations.pairs.end()) return;
+    if (it==config->animations.pairs.end()
+        ) return;
     const AnimDef &def = it->second.start;
-    if (!def.enabled || def.duration<=0) return;
+    if (!def.enabled || def.duration<=0)
+        return;
     auto *tree = (struct wlr_scene_tree*)popup->get()->base->data;
-    if (!tree) return;
+    if (!tree)
+        return;
     struct wlr_box end = {tree->node.x, tree->node.y, 200,200}; // fallback size not accurate
     // Try to get size from popup geometry if available
     if (popup->get()->base->surface && popup->get()->base->surface->current.width>0)
@@ -1752,7 +1907,10 @@ void Engine::animatePopupOpen(Popup *popup) {
     animManager->remove(id);
     Animation *anim = animManager->create(id, int(def.duration / config->animations.speed), Animation::easingFromString(QString::fromStdString(def.easing)));
     wlr_scene_node_set_position(&tree->node, s.x, s.y);
-    anim->setUpdateCallback([tree,s,end](double e){ struct wlr_box cur=easedLerpBox(s,end,e); wlr_scene_node_set_position(&tree->node, cur.x, cur.y); });
+anim->setUpdateCallback([tree,s,end](double e){
+        struct wlr_box cur=easedLerpBox(s,end,e);
+        wlr_scene_node_set_position(&tree->node, cur.x, cur.y);
+    });
     anim->start();
 }
 
@@ -1762,7 +1920,8 @@ void Engine::animatePopupClose(Popup *popup) {
 }
 
 void Engine::animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const struct wlr_box &usable) {
-    if (!out || oldWs==newWs) return;
+    if (!out || oldWs==newWs)
+        return;
     if (!config || !config->animations.enabled) {
         layout->deactivateWorkspace(oldWs);
         layout->activateWorkspace(newWs);
@@ -1827,7 +1986,10 @@ void Engine::animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const str
         QString id = baseId + QString::number((quintptr)tl,16) + ":old";
         animManager->remove(id);
         Animation* anim = animManager->create(id, int(def.duration/2 / config->animations.speed), easing);
-        anim->setUpdateCallback([tl, from, to](double e){ struct wlr_box cur=easedLerpBox(from,to,e); if(tl&&tl->getSceneTree()) wlr_scene_node_set_position(&tl->getSceneTree()->node, cur.x, cur.y); });
+anim->setUpdateCallback([tl, from, to](double e){
+            struct wlr_box cur=easedLerpBox(from,to,e);
+            if(tl&&tl->getSceneTree()) wlr_scene_node_set_position(&tl->getSceneTree()->node, cur.x, cur.y);
+        });
         anim->start();
     }
     // Need final positions after arrange; if not yet arranged, compute via layout
@@ -1841,11 +2003,15 @@ void Engine::animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const str
             from.x -= dx;
             from.y -= dy;
         }
-        if(tl && tl->getSceneTree()) wlr_scene_node_set_position(&tl->getSceneTree()->node, from.x, from.y);
+        if(tl && tl->getSceneTree()
+            ) wlr_scene_node_set_position(&tl->getSceneTree()->node, from.x, from.y);
         QString id = baseId + QString::number((quintptr)tl,16) + ":new";
         animManager->remove(id);
         Animation* anim = animManager->create(id, int(def.duration/2 / config->animations.speed), easing);
-        anim->setUpdateCallback([tl, from, to](double e){ struct wlr_box cur=easedLerpBox(from,to,e); if(tl&&tl->getSceneTree()) wlr_scene_node_set_position(&tl->getSceneTree()->node, cur.x, cur.y); });
+anim->setUpdateCallback([tl, from, to](double e){
+            struct wlr_box cur=easedLerpBox(from,to,e);
+            if(tl&&tl->getSceneTree()) wlr_scene_node_set_position(&tl->getSceneTree()->node, cur.x, cur.y);
+        });
         anim->start();
     }
     if(!winOnly){
@@ -1855,7 +2021,7 @@ void Engine::animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const str
     QString doneId = baseId + "done";
     animManager->remove(doneId);
     Animation *done = animManager->create(doneId, int(def.duration / config->animations.speed), easing);
-    done->setFinishedCallback([this, out, oldWs, newWs, usable](){
+    done->setFinishedCallback([this, out, oldWs](){
         layout->deactivateWorkspace(oldWs);
         arrangeForOutput(out);
     });
@@ -1863,7 +2029,8 @@ void Engine::animateWorkspaceSwitch(Output *out, int oldWs, int newWs, const str
 }
 
 void Engine::applyConfigDecorations() {
-    if (!config || !decorManager || !animManager) return;
+    if (!config || !decorManager || !animManager)
+        return;
     // animations
     animManager->setEnabled(config->animations.enabled);
     animManager->setGlobalSpeed(config->animations.speed);
@@ -1872,7 +2039,8 @@ void Engine::applyConfigDecorations() {
     }
     for (auto &kv : config->animations.pairs) {
         animManager->setAnimationEnabled(QString::fromStdString(kv.first + ":start"), kv.second.start.enabled);
-        if (kv.second.hasEnd()) animManager->setAnimationEnabled(QString::fromStdString(kv.first + ":end"), kv.second.end->enabled);
+        if (kv.second.hasEnd()
+            ) animManager->setAnimationEnabled(QString::fromStdString(kv.first + ":end"), kv.second.end->enabled);
         // also enable base id
         animManager->setAnimationEnabled(QString::fromStdString(kv.first), kv.second.start.enabled);
     }
@@ -1889,7 +2057,8 @@ void Engine::applyConfigDecorations() {
     dc.border.gradient.colors.clear();
     for (auto &s : config->decorations.border.gradient.colors) {
         QColor c(QString::fromStdString(s));
-        if (c.isValid()) dc.border.gradient.colors.append(c);
+        if (c.isValid()
+            ) dc.border.gradient.colors.append(c);
     }
     dc.border.animate = config->decorations.border.animate;
     dc.border.animationDuration = config->decorations.border.animation_duration;
@@ -1947,7 +2116,9 @@ void Engine::onCommand(const astick::VariantCommand &cmd) {
     // Simple apply for State commands — keep zero-copy visitor
     std::visit(astick::Overloaded{
         [this](const astick::Cmd::SetWindowBox &c){
-            auto it = std::find_if(toplevels.begin(), toplevels.end(), [&](Toplevel* tl){ return tl->id == c.id; });
+            auto it = std::find_if(toplevels.begin(), toplevels.end(), [&](Toplevel* tl){
+                return tl->id == c.id;
+            });
             if (it != toplevels.end() && *it) {
                 wlr_scene_node_set_position(&(*it)->getSceneTree()->node, c.box.x, c.box.y);
                 wlr_xdg_toplevel_set_size((*it)->get(), c.box.width, c.box.height);

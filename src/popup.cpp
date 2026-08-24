@@ -58,7 +58,8 @@ Popup::Popup(
         if (layer_parent->data)
             layer_tree = (struct wlr_scene_tree *)layer_parent->data;
         struct wlr_scene_tree *target = overlay ? overlay : layer_tree;
-        if (!target) target = &server->getScene()->tree;
+        if (!target)
+            target = &server->getScene()->tree;
         popup->base->data = wlr_scene_xdg_surface_create(target, popup->base);
         // If we forced the popup into OVERLAY, its position is currently
         // relative to the parent surface (0,0 in overlay). Make it absolute
@@ -85,12 +86,14 @@ Popup::Popup(
         // Put them in popupTree (between windows and TOP) and offset to
         // parent's absolute position.
         struct wlr_scene_tree *popup_parent = server->getPopupTree();
-        if (!popup_parent) popup_parent = parent_tree;
+        if (!popup_parent)
+            popup_parent = parent_tree;
         if (!popup_parent) {
             popup_parent =
                 server->getLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
         }
-        if (!popup_parent) popup_parent = &server->getScene()->tree;
+        if (!popup_parent)
+            popup_parent = &server->getScene()->tree;
         popup->base->data =
             wlr_scene_xdg_surface_create(popup_parent, popup->base);
         if (parent_tree && popup_parent != parent_tree && popup->base->data) {

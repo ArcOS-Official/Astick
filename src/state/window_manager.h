@@ -16,8 +16,12 @@ public:
         auto it = liveIds.find(id);
         return it != liveIds.end();
     }
-    void onMapped(WindowId id) { liveIds.insert(id); }
-    void onDestroy(WindowId id) { liveIds.erase(id); }
+    void onMapped(WindowId id) {
+        liveIds.insert(id);
+    }
+    void onDestroy(WindowId id) {
+        liveIds.erase(id);
+    }
     void clear() noexcept { liveIds.clear(); }
     size_t liveCount() const noexcept { return liveIds.size(); }
 private:

@@ -24,7 +24,10 @@ namespace detail {
 // FNV-1a 64 — zero-copy over string_view, no allocation.
 constexpr uint64_t fnv1a64(std::string_view s) noexcept {
     uint64_t h = 14695981039346656037ull;
-    for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
+    for (unsigned char c : s) {
+        h ^= c;
+        h *= 1099511628211ull;
+    }
     return h;
 }
 constexpr uint64_t hashCombine64(uint64_t a, uint64_t b) noexcept {

@@ -6,12 +6,14 @@
 #include <algorithm>
 
 QColor GradientConfig::sample(double t) const {
-    if (colors.size() < 2) return colors.isEmpty() ? QColor("#000000") : colors.first();
+    if (colors.size()
+        < 2) return colors.isEmpty() ? QColor("#000000") : colors.first();
     t = std::clamp(t, 0.0, 1.0);
     double scaled = t * (colors.size() - 1);
     int i = (int)scaled;
     double f = scaled - i;
-    if (i >= colors.size() - 1) return colors.last();
+    if (i >= colors.size()
+        - 1) return colors.last();
     auto a = colors[i];
     auto b = colors[i+1];
     return QColor::fromRgbF(a.redF()*(1-f)+b.redF()*f, a.greenF()*(1-f)+b.greenF()*f, a.blueF()*(1-f)+b.blueF()*f, a.alphaF()*(1-f)+b.alphaF()*f);
@@ -27,7 +29,9 @@ void WindowDecoration::colorToFloat4(const QColor &c, float out[4]) {
 }
 
 QList<QColor> WindowDecoration::resolveGradientColors(const GradientConfig &g, const QColor &fallbackA, const QColor &fallbackB) {
-    if (!g.enabled || g.colors.size() < 2) return {};
+if (!g.enabled || g.colors.size() < 2) return {
+    }
+    ;
     return g.colors;
 }
 
@@ -45,7 +49,11 @@ WindowDecoration::~WindowDecoration() {
 void WindowDecoration::setConfig(const DecorationConfig &cfg) {
     bool needRecreate = (cfg.border.enabled != m_cfg.border.enabled) || (cfg.titlebar.enabled != m_cfg.titlebar.enabled);
     m_cfg = cfg;
-    if (needRecreate) { destroyNodes(); createNodes(); ensureAnimation(); }
+if (needRecreate) {
+        destroyNodes();
+        createNodes();
+        ensureAnimation();
+    }
     else { ensureAnimation(); }
     applyColorsImmediate(m_focused);
     updateGeometry(m_x, m_y, m_w, m_h);
@@ -53,16 +61,21 @@ void WindowDecoration::setConfig(const DecorationConfig &cfg) {
 const DecorationConfig &WindowDecoration::config() const { return m_cfg; }
 
 void WindowDecoration::setFocused(bool focused) {
-    if (m_focused == focused) return;
+    if (m_focused == focused)
+        return;
     m_focused = focused;
-    if (!m_cfg.border.enabled) return;
+    if (!m_cfg.border.enabled)
+        return;
     if (!m_cfg.border.animate || !m_animMgr || !m_animMgr->isEnabled() || !m_animMgr->isAnimationEnabled("border") || m_cfg.border.animationDuration <= 0) {
         m_animT = focused ? 1.0 : 0.0;
         applyColorsImmediate(focused);
         return;
     }
     ensureAnimation();
-    if (!m_borderAnim) { applyColorsImmediate(focused); return; }
+if (!m_borderAnim) {
+        applyColorsImmediate(focused);
+        return;
+    }
     m_borderAnim->setDuration(m_cfg.border.animationDuration);
     m_borderAnim->setEasing(Animation::easingFromString(m_cfg.border.animationEasing));
     // animate from current T to target
@@ -92,7 +105,8 @@ void WindowDecoration::setFocused(bool focused) {
 
 void WindowDecoration::updateGeometry(int x, int y, int w, int h) {
     m_x = x; m_y = y; m_w = w; m_h = h;
-    if (!m_borderTree) return;
+    if (!m_borderTree)
+        return;
     int bw = m_cfg.border.enabled ? m_cfg.border.width : 0;
     int th = m_cfg.titlebar.enabled ? m_cfg.titlebar.height : 0;
     int radius = m_cfg.border.radius;
@@ -142,17 +156,29 @@ void WindowDecoration::updateGeometry(int x, int y, int w, int h) {
 }
 
 void WindowDecoration::setTitlebarEnabled(bool e) {
-    if (m_cfg.titlebar.enabled == e) return;
+    if (m_cfg.titlebar.enabled == e)
+        return;
     m_cfg.titlebar.enabled = e;
     destroyNodes(); createNodes(); applyColorsImmediate(m_focused); updateGeometry(m_x,m_y,m_w,m_h);
 }
 
-void WindowDecoration::setBorderWidth(int w) { m_cfg.border.width = std::max(0,w); updateGeometry(m_x,m_y,m_w,m_h); }
-void WindowDecoration::setBorderRadius(int r) { m_cfg.border.radius = std::max(0,r); updateGeometry(m_x,m_y,m_w,m_h); }
-void WindowDecoration::setBorderColors(const QColor &active, const QColor &inactive){ m_cfg.border.activeColor=active; m_cfg.border.inactiveColor=inactive; applyColorsImmediate(m_focused); }
+void WindowDecoration::setBorderWidth(int w) {
+    m_cfg.border.width = std::max(0,w);
+    updateGeometry(m_x,m_y,m_w,m_h);
+}
+void WindowDecoration::setBorderRadius(int r) {
+    m_cfg.border.radius = std::max(0,r);
+    updateGeometry(m_x,m_y,m_w,m_h);
+}
+void WindowDecoration::setBorderColors(const QColor &active, const QColor &inactive){
+    m_cfg.border.activeColor=active;
+    m_cfg.border.inactiveColor=inactive;
+    applyColorsImmediate(m_focused);
+}
 void WindowDecoration::setVisible(bool v){
     m_visible=v;
-    if(m_borderTree) wlr_scene_node_set_enabled(&m_borderTree->node, v && (m_cfg.border.enabled || m_cfg.titlebar.enabled));
+    if(m_borderTree)
+        wlr_scene_node_set_enabled(&m_borderTree->node, v && (m_cfg.border.enabled || m_cfg.titlebar.enabled));
     // keep toplevel itself visibility handled by layout
 }
 
@@ -163,12 +189,15 @@ void WindowDecoration::onBorderProgress(double eased){
 }
 
 void WindowDecoration::createNodes(){
-    if (!m_tl || !m_tl->getSceneTree()) return;
+    if (!m_tl || !m_tl->getSceneTree()
+        ) return;
     struct wlr_scene_tree *parentTree = m_tl->getSceneTree()->node.parent;
-    if (!parentTree) return;
+    if (!parentTree)
+        return;
     // border tree sibling to toplevel tree, placed just below it
     m_borderTree = wlr_scene_tree_create(parentTree);
-    if (!m_borderTree) return;
+    if (!m_borderTree)
+        return;
     // place below toplevel
     wlr_scene_node_place_below(&m_borderTree->node, &m_tl->getSceneTree()->node);
     if (m_cfg.border.enabled) {
@@ -183,11 +212,18 @@ void WindowDecoration::createNodes(){
         float tcol[4]; colorToFloat4(m_cfg.titlebar.color, tcol);
         m_titleBg = wlr_scene_rect_create(m_titleTree, 1, 1, tcol);
     }
-    if (!m_visible) wlr_scene_node_set_enabled(&m_borderTree->node, false);
+    if (!m_visible)
+        wlr_scene_node_set_enabled(&m_borderTree->node, false);
 }
 
 void WindowDecoration::destroyNodes(){
-    if (m_borderTree) { wlr_scene_node_destroy(&m_borderTree->node); m_borderTree=nullptr; m_top=m_bottom=m_left=m_right=nullptr; m_titleTree=nullptr; m_titleBg=nullptr; }
+if (m_borderTree) {
+        wlr_scene_node_destroy(&m_borderTree->node);
+        m_borderTree=nullptr;
+        m_top=m_bottom=m_left=m_right=nullptr;
+        m_titleTree=nullptr;
+        m_titleBg=nullptr;
+    }
 }
 
 void WindowDecoration::applyColorsImmediate(bool focused){
@@ -201,9 +237,14 @@ void WindowDecoration::applyColorsImmediate(bool focused){
 }
 
 void WindowDecoration::ensureAnimation(){
-    if (!m_animMgr) return;
-    if (!m_cfg.border.animate) { if(m_borderAnim) m_borderAnim->stop(); return; }
-    if (m_borderAnim) return;
+    if (!m_animMgr)
+        return;
+if (!m_cfg.border.animate) {
+        if(m_borderAnim) m_borderAnim->stop();
+        return;
+    }
+    if (m_borderAnim)
+        return;
     QString id = QString("border:%1").arg((quintptr)m_tl);
     m_borderAnim = m_animMgr->get(id);
     if (!m_borderAnim) {
@@ -214,10 +255,14 @@ void WindowDecoration::ensureAnimation(){
 
 void WindowDecoration::updateRectColors(const QColor &c){
     float f[4]; colorToFloat4(c,f);
-    if(m_top) wlr_scene_rect_set_color(m_top,f);
-    if(m_bottom) wlr_scene_rect_set_color(m_bottom,f);
-    if(m_left) wlr_scene_rect_set_color(m_left,f);
-    if(m_right) wlr_scene_rect_set_color(m_right,f);
+    if(m_top)
+        wlr_scene_rect_set_color(m_top,f);
+    if(m_bottom)
+        wlr_scene_rect_set_color(m_bottom,f);
+    if(m_left)
+        wlr_scene_rect_set_color(m_left,f);
+    if(m_right)
+        wlr_scene_rect_set_color(m_right,f);
 }
 
 // DecorationManager
@@ -231,25 +276,38 @@ void DecorationManager::setConfig(const DecorationConfig &cfg){
 }
 WindowDecoration* DecorationManager::decorationFor(Toplevel *tl) const { return m_decorations.value(tl,nullptr); }
 WindowDecoration* DecorationManager::createFor(Toplevel *tl){
-    if(!tl) return nullptr;
-    if(m_decorations.contains(tl)) return m_decorations[tl];
+    if(!tl)
+        return nullptr;
+    if(m_decorations.contains(tl)
+        ) return m_decorations[tl];
     auto *d = new WindowDecoration(tl, m_cfg, m_animMgr, const_cast<DecorationManager*>(this));
     m_decorations.insert(tl,d);
-    if(tl) connect(tl, &Toplevel::destroyed, this, [this,tl](){ removeFor(tl); });
+    if(tl) connect(tl, &Toplevel::destroyed, this, [this,tl](){
+        removeFor(tl);
+    });
     return d;
 }
 void DecorationManager::removeFor(Toplevel *tl){
     auto it=m_decorations.find(tl);
-    if(it==m_decorations.end()) return;
+    if(it==m_decorations.end()
+        ) return;
     WindowDecoration *d=it.value(); m_decorations.erase(it); d->deleteLater();
 }
 void DecorationManager::setFocusedToplevel(Toplevel *tl){
-    if(m_focused==tl) return;
-    if(m_focused){ if(auto *d=decorationFor(m_focused)) d->setFocused(false); }
+    if(m_focused==tl)
+        return;
+    if(m_focused){
+        if(auto *d=decorationFor(m_focused)) d->setFocused(false);
+    }
     m_focused=tl;
-    if(m_focused){ auto *d=decorationFor(m_focused); if(!d) d=createFor(m_focused); d->setFocused(true); }
+    if(m_focused){
+        auto *d=decorationFor(m_focused);
+        if(!d) d=createFor(m_focused);
+        d->setFocused(true);
+    }
     // unfocus others
     for(auto it=m_decorations.begin(); it!=m_decorations.end(); ++it){
-        if(it.key()!=m_focused) it.value()->setFocused(false);
+        if(it.key()
+            !=m_focused) it.value()->setFocused(false);
     }
 }

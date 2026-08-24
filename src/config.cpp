@@ -15,14 +15,17 @@ std::string Config::s_originalDisplay;
 void Config::captureOriginalDisplay() {
     const char *wd = std::getenv("WAYLAND_DISPLAY");
     const char *d = std::getenv("DISPLAY");
-    if (wd) s_originalWaylandDisplay = wd;
-    if (d) s_originalDisplay = d;
+    if (wd)
+        s_originalWaylandDisplay = wd;
+    if (d)
+        s_originalDisplay = d;
 }
 
 bool Config::isWindowedMode() const {
     // Windowed/nested if we were launched inside an existing Wayland or X11 session.
     // s_originalWaylandDisplay is captured before we overwrite WAYLAND_DISPLAY with our socket.
-    if (!s_originalWaylandDisplay.empty()) return true;
+    if (!s_originalWaylandDisplay.empty()
+        ) return true;
     if (!s_originalDisplay.empty()) {
         // X11 parent also counts as windowed (XWayland or X11 host)
         // But if we're running on DRM, DISPLAY may be empty. Only treat as windowed if WAYLAND_DISPLAY also? For safety treat DISPLAY presence as windowed too.
@@ -57,7 +60,8 @@ std::filesystem::path Config::defaultPath() {
         base = xdg;
     } else {
         const char *home = std::getenv("HOME");
-        if (home) base = std::string(home) + "/.config";
+        if (home)
+            base = std::string(home) + "/.config";
         else base = ".";
     }
     return fs::path(base) / "Astick" / "config.json";
@@ -88,10 +92,14 @@ void Config::ensureDefaults() {
         bool hasMaximize = false;
         bool hasFullscreen = false;
         for (auto &k : keybinds) {
-            if (k.action == "swap_orientation" || k.action == "toggle_split") hasSwap = true;
-            if (k.action == "toggle_floating" || k.action == "toggle_float" || k.action == "floating_toggle") hasFloating = true;
-            if (k.action == "toggle_maximize" || k.action == "maximize" || k.action == "toggle_maximized") hasMaximize = true;
-            if (k.action == "toggle_fullscreen" || k.action == "fullscreen" || k.action == "toggle_fullscreened") hasFullscreen = true;
+            if (k.action == "swap_orientation" || k.action == "toggle_split")
+                hasSwap = true;
+            if (k.action == "toggle_floating" || k.action == "toggle_float" || k.action == "floating_toggle")
+                hasFloating = true;
+            if (k.action == "toggle_maximize" || k.action == "maximize" || k.action == "toggle_maximized")
+                hasMaximize = true;
+            if (k.action == "toggle_fullscreen" || k.action == "fullscreen" || k.action == "toggle_fullscreened")
+                hasFullscreen = true;
         }
         if (!hasSwap) {
             keybinds.push_back({{"Mod"}, "t", "swap_orientation", "", 0, XKB_KEY_NoSymbol});
@@ -141,7 +149,8 @@ uint32_t Config::parseMods(const std::vector<std::string> &mods) {
     for (auto &m : mods) {
         std::string lower = m;
         for (auto &c : lower) c = std::tolower(c);
-        if (lower == "shift") mask |= WLR_MODIFIER_SHIFT;
+        if (lower == "shift")
+            mask |= WLR_MODIFIER_SHIFT;
         else if (lower == "ctrl" || lower == "control") mask |= WLR_MODIFIER_CTRL;
         else if (lower == "alt" || lower == "mod1") mask |= WLR_MODIFIER_ALT;
         else if (lower == "super" || lower == "mod4" || lower == "meta" || lower == "logo") mask |= WLR_MODIFIER_LOGO;
@@ -153,7 +162,8 @@ uint32_t Config::parseMods(const std::vector<std::string> &mods) {
 }
 
 xkb_keysym_t Config::parseKeysym(const std::string &key) {
-    if (key.empty()) return XKB_KEY_NoSymbol;
+    if (key.empty()
+        ) return XKB_KEY_NoSymbol;
     xkb_keysym_t sym = xkb_keysym_from_name(key.c_str(), XKB_KEYSYM_CASE_INSENSITIVE);
     if (sym == XKB_KEY_NoSymbol && key.size() == 1) {
         // fallback single char
@@ -164,13 +174,15 @@ xkb_keysym_t Config::parseKeysym(const std::string &key) {
 
 const Keybind* Config::findKeybind(uint32_t mods, xkb_keysym_t sym) const {
     for (auto &k : keybinds) {
-        if (k.matches(mods, sym)) return &k;
+        if (k.matches(mods, sym)
+            ) return &k;
     }
     return nullptr;
 }
 
 std::string Config::outputId(struct wlr_output *output) {
-    if (!output) return "unknown";
+    if (!output)
+        return "unknown";
     std::string name = output->name ? output->name : "unknown";
     std::string make = output->make ? output->make : "";
     std::string model = output->model ? output->model : "";
@@ -179,13 +191,16 @@ std::string Config::outputId(struct wlr_output *output) {
     std::string id = name;
     if (!make.empty() || !model.empty() || !serial.empty()) {
         id += ":" + make + ":" + model;
-        if (!serial.empty()) id += ":" + serial;
+        if (!serial.empty()
+            ) id += ":" + serial;
     }
     // sanitize: replace spaces and slashes
     for (char &c : id) {
-        if (c == '/' || c == ' ') c = '_';
+        if (c == '/' || c == ' ')
+            c = '_';
     }
-    if (id.empty()) id = "unknown";
+    if (id.empty()
+        ) id = "unknown";
     return id;
 }
 
@@ -210,14 +225,16 @@ void Config::setOutputConfig(const std::string &id, const OutputEntry &entry) {
 }
 
 double Config::detectDpi(struct wlr_output *output) const {
-    if (!output) return 96.0;
+    if (!output)
+        return 96.0;
     // If config has dpi set for this monitor, use it
     std::string id = outputId(output);
     auto it = monitors.find(id);
     if (it != monitors.end() && it->second.dpi && *it->second.dpi > 0) {
         return *it->second.dpi;
     }
-    if (mouse.dpi > 0) return mouse.dpi;
+    if (mouse.dpi > 0)
+        return mouse.dpi;
     // Auto detect from phys size
     int mmW = output->phys_width;
     int mmH = output->phys_height;
@@ -229,29 +246,37 @@ double Config::detectDpi(struct wlr_output *output) const {
             pxW = output->current_mode->width;
             pxH = output->current_mode->height;
         }
-        if (mmW <=0 || mmH <=0) return 96.0;
+        if (mmW <=0 || mmH <=0)
+            return 96.0;
     }
     double diagPx = std::hypot((double)pxW, (double)pxH);
     double diagMm = std::hypot((double)mmW, (double)mmH);
     double diagIn = diagMm / 25.4;
-    if (diagIn <= 0) return 96.0;
+    if (diagIn <= 0)
+        return 96.0;
     double dpi = diagPx / diagIn;
-    if (dpi < 30 || dpi > 1000) return 96.0;
+    if (dpi < 30 || dpi > 1000)
+        return 96.0;
     return dpi;
 }
 
 double Config::getOutputScale(struct wlr_output *output, const OutputEntry &entry) const {
-    if (entry.scale > 0.1) return entry.scale;
-    if (entry.dpi && *entry.dpi > 0) return *entry.dpi / 96.0;
+    if (entry.scale > 0.1)
+        return entry.scale;
+    if (entry.dpi && *entry.dpi > 0)
+        return *entry.dpi / 96.0;
     double dpi = detectDpi(output);
     // auto scale: 1.0 for <120 dpi, 1.25 for 120-144, 1.5 for 144-192, 2.0 for >192
     // but if user wants manual, they set scale. For auto, we can compute
     // simple: round(dpi/96)
     // Keep conservative: if dpi < 140 => 1.0, 140-180 =>1.25 etc, but use 1.0 by default to avoid surprise
     // We'll just return 1.0 if scale not set, unless dpi very high
-    if (dpi >= 192) return 2.0;
-    if (dpi >= 144) return 1.5;
-    if (dpi >= 120) return 1.25;
+    if (dpi >= 192)
+        return 2.0;
+    if (dpi >= 144)
+        return 1.5;
+    if (dpi >= 120)
+        return 1.25;
     return 1.0;
 }
 
@@ -266,7 +291,8 @@ static std::string preprocessConfigText(const std::string &raw, std::vector<std:
         char c = raw[i];
         if (inString) {
             out.push_back(c);
-            if (escaped) escaped = false;
+            if (escaped)
+                escaped = false;
             else if (c == '\\') escaped = true;
             else if (c == '"') {
                 inString = false;
@@ -298,7 +324,10 @@ static std::string preprocessConfigText(const std::string &raw, std::vector<std:
         if (c == '/' && i+1 < n && raw[i+1]=='/') {
             // line comment - copy through to newline (tolerated)
             size_t j=i;
-            while(j<n && raw[j]!='\n') { out.push_back(raw[j]); j++; }
+            while(j<n && raw[j]!='\n') {
+                out.push_back(raw[j]);
+                j++;
+            }
             i=j;
             continue;
         }
@@ -318,7 +347,8 @@ static std::string preprocessConfigText(const std::string &raw, std::vector<std:
                     out += "{\"enabled\":false,\"duration\":0,\"style\":\"fade\",\"easing\":\"linear\"}";
                 }
             } else if (word=="default") {
-                if (lastKey=="duration") out += "250";
+                if (lastKey=="duration")
+                    out += "250";
                 else if (lastKey=="easing") out += "\"easeOutCubic\"";
                 else if (lastKey=="style") out += "\"fade\"";
                 else if (lastKey=="enabled") out += "true";
@@ -353,19 +383,22 @@ static std::string preprocessConfigText(const std::string &raw, std::vector<std:
         bool s=false, esc=false;
         for(char ch: out){
             if(s){
-                if(esc) esc=false;
+                if(esc)
+                    esc=false;
                 else if(ch=='\\') esc=true;
                 else if(ch=='"') s=false;
                 continue;
             }
-            if(ch=='"') s=true;
+            if(ch=='"')
+                s=true;
             else if(ch=='{') braces++;
             else if(ch=='}') braces--;
             else if(ch=='[') brackets++;
             else if(ch==']') brackets--;
         }
         if(braces!=0) outErrors.push_back("Unbalanced braces in config ({} mismatch)");
-        if(brackets!=0) outErrors.push_back("Unbalanced brackets in config ([] mismatch)");
+        if(brackets!=0)
+            outErrors.push_back("Unbalanced brackets in config ([] mismatch)");
     }
     return out;
 }
@@ -438,8 +471,10 @@ bool Config::load(const std::filesystem::path &path) {
     trySection("input", [&](){
         if (j.contains("input")) {
             auto &in = j["input"];
-            if (in.contains("keyboard")) keyboard = in["keyboard"].get<KeyboardConfig>();
-            if (in.contains("mouse")) mouse = in["mouse"].get<MouseConfig>();
+            if (in.contains("keyboard")
+                ) keyboard = in["keyboard"].get<KeyboardConfig>();
+            if (in.contains("mouse")
+                ) mouse = in["mouse"].get<MouseConfig>();
         }
     });
     trySection("layout", [&](){
@@ -451,26 +486,34 @@ bool Config::load(const std::filesystem::path &path) {
         }
         if (j.contains("tiling") && j["tiling"].is_object()) {
             auto &t = j["tiling"];
-            if (t.contains("bsp_split_ratio")) t.at("bsp_split_ratio").get_to(bsp.split_ratio);
-            if (t.contains("bsp_opposite")) t.at("bsp_opposite").get_to(bsp.opposite_orientation);
-            if (t.contains("bsp_keep_ratio_on_drop")) t.at("bsp_keep_ratio_on_drop").get_to(bsp.keep_ratio_on_drop);
-            if (t.contains("bsp_min_ratio")) t.at("bsp_min_ratio").get_to(bsp.min_ratio);
-            if (t.contains("bsp_max_ratio")) t.at("bsp_max_ratio").get_to(bsp.max_ratio);
+            if (t.contains("bsp_split_ratio")
+                ) t.at("bsp_split_ratio").get_to(bsp.split_ratio);
+            if (t.contains("bsp_opposite")
+                ) t.at("bsp_opposite").get_to(bsp.opposite_orientation);
+            if (t.contains("bsp_keep_ratio_on_drop")
+                ) t.at("bsp_keep_ratio_on_drop").get_to(bsp.keep_ratio_on_drop);
+            if (t.contains("bsp_min_ratio")
+                ) t.at("bsp_min_ratio").get_to(bsp.min_ratio);
+            if (t.contains("bsp_max_ratio")
+                ) t.at("bsp_max_ratio").get_to(bsp.max_ratio);
         }
     });
     trySection("modkey", [&](){
         // top-level mod: "mod", "modkey", "modKey"
-        if (j.contains("mod") && j["mod"].is_string()) j["mod"].get_to(modkey);
+        if (j.contains("mod")
+            && j["mod"].is_string()) j["mod"].get_to(modkey);
         else if (j.contains("modkey") && j["modkey"].is_string()) j["modkey"].get_to(modkey);
         else if (j.contains("modKey") && j["modKey"].is_string()) j["modKey"].get_to(modkey);
         if (j.contains("general") && j["general"].is_object()) {
             auto &g = j["general"];
-            if (g.contains("mod") && g["mod"].is_string()) g["mod"].get_to(modkey);
+            if (g.contains("mod")
+                && g["mod"].is_string()) g["mod"].get_to(modkey);
             else if (g.contains("modkey") && g["modkey"].is_string()) g["modkey"].get_to(modkey);
         }
         if (j.contains("input") && j["input"].is_object()) {
             auto &in = j["input"];
-            if (in.contains("mod") && in["mod"].is_string()) in["mod"].get_to(modkey);
+            if (in.contains("mod")
+                && in["mod"].is_string()) in["mod"].get_to(modkey);
             else if (in.contains("modkey") && in["modkey"].is_string()) in["modkey"].get_to(modkey);
             else if (in.contains("modKey") && in["modKey"].is_string()) in["modKey"].get_to(modkey);
         }
@@ -482,7 +525,8 @@ bool Config::load(const std::filesystem::path &path) {
         } else {
             ensureDefaults();
         }
-        if (keybinds.empty()) ensureDefaults();
+        if (keybinds.empty()
+            ) ensureDefaults();
         else ensureDefaults();
         // re-parse after modkey known (ensureDefaults already called parseKeybinds with effectiveMod)
         // if modkey was parsed after ensureDefaults, we need to re-resolve Mod placeholders
@@ -494,7 +538,8 @@ bool Config::load(const std::filesystem::path &path) {
         }
         if (j.contains("appearance") && j["appearance"].is_object()) {
             auto &ap = j["appearance"];
-            if (ap.contains("decorations")) decorations = ap["decorations"].get<DecorationConfigData>();
+            if (ap.contains("decorations")
+                ) decorations = ap["decorations"].get<DecorationConfigData>();
         }
     });
     trySection("animations", [&](){
@@ -503,7 +548,8 @@ bool Config::load(const std::filesystem::path &path) {
         }
         if (j.contains("appearance") && j["appearance"].is_object()) {
             auto &ap = j["appearance"];
-            if (ap.contains("animations")) animations = ap["animations"].get<AnimationsConfig>();
+            if (ap.contains("animations")
+                ) animations = ap["animations"].get<AnimationsConfig>();
         }
     });
 
@@ -538,8 +584,10 @@ bool Config::load(const std::filesystem::path &path) {
                 // parse embedded directly to reset state
                 try {
                     nlohmann::json jj = nlohmann::json::parse(embedded);
-                    if (jj.contains("animations")) animations = jj["animations"].get<AnimationsConfig>();
-                    if (jj.contains("decorations")) decorations = jj["decorations"].get<DecorationConfigData>();
+                    if (jj.contains("animations")
+                        ) animations = jj["animations"].get<AnimationsConfig>();
+                    if (jj.contains("decorations")
+                        ) decorations = jj["decorations"].get<DecorationConfigData>();
                     // keep other fields at defaults
                     ensureDefaults();
                 } catch(...) {}
@@ -555,9 +603,11 @@ bool Config::load(const std::filesystem::path &path) {
 
 bool Config::save(const std::filesystem::path &path) const {
     fs::path p = path.empty() ? loadedPath : path;
-    if (p.empty()) p = defaultPath();
+    if (p.empty()
+        ) p = defaultPath();
     try {
-        if (!p.parent_path().empty()) fs::create_directories(p.parent_path());
+        if (!p.parent_path()
+            .empty()) fs::create_directories(p.parent_path());
         nlohmann::json j;
         // preserve raw unknown fields? For now rebuild
         j["outputs"] = nlohmann::json::object();
@@ -575,7 +625,8 @@ bool Config::save(const std::filesystem::path &path) const {
         j["mod"] = modkey;
         j["keybinds"] = keybinds;
         std::ofstream f(p);
-        if (!f) return false;
+        if (!f)
+            return false;
         f << j.dump(4) << std::endl;
         return true;
     } catch (const std::exception &e) {
@@ -587,7 +638,8 @@ bool Config::save(const std::filesystem::path &path) const {
 void Config::loadOrCreateDefault() {
     fs::path p = defaultPath();
     if (std::filesystem::exists(p)) {
-        if (load(p)) return;
+        if (load(p)
+            ) return;
     }
     std::string embedded = embeddedDefaultJson();
     if (!embedded.empty()) {
@@ -605,45 +657,69 @@ void Config::loadOrCreateDefault() {
 
 void to_json(nlohmann::json &j, const OutputEntry &o) {
     j = nlohmann::json::object();
-    if (o.width) j["width"] = o.width;
-    if (o.height) j["height"] = o.height;
-    if (o.refresh) j["refresh"] = o.refresh;
-    if (o.scale) j["scale"] = o.scale;
-    if (o.x != INT_MIN) j["x"] = o.x;
-    if (o.y != INT_MIN) j["y"] = o.y;
+    if (o.width)
+        j["width"] = o.width;
+    if (o.height)
+        j["height"] = o.height;
+    if (o.refresh)
+        j["refresh"] = o.refresh;
+    if (o.scale)
+        j["scale"] = o.scale;
+    if (o.x != INT_MIN)
+        j["x"] = o.x;
+    if (o.y != INT_MIN)
+        j["y"] = o.y;
     j["enabled"] = o.enabled;
-    if (o.dpi) j["dpi"] = *o.dpi;
+    if (o.dpi)
+        j["dpi"] = *o.dpi;
 }
 
 void from_json(const nlohmann::json &j, OutputEntry &o) {
-    if (j.contains("width")) j.at("width").get_to(o.width);
-    if (j.contains("height")) j.at("height").get_to(o.height);
-    if (j.contains("refresh")) j.at("refresh").get_to(o.refresh);
-    if (j.contains("scale")) j.at("scale").get_to(o.scale);
-    if (j.contains("x")) j.at("x").get_to(o.x);
-    if (j.contains("y")) j.at("y").get_to(o.y);
-    if (j.contains("enabled")) j.at("enabled").get_to(o.enabled);
-    if (j.contains("dpi")) o.dpi = j.at("dpi").get<double>();
+    if (j.contains("width")
+        ) j.at("width").get_to(o.width);
+    if (j.contains("height")
+        ) j.at("height").get_to(o.height);
+    if (j.contains("refresh")
+        ) j.at("refresh").get_to(o.refresh);
+    if (j.contains("scale")
+        ) j.at("scale").get_to(o.scale);
+    if (j.contains("x")
+        ) j.at("x").get_to(o.x);
+    if (j.contains("y")
+        ) j.at("y").get_to(o.y);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(o.enabled);
+    if (j.contains("dpi")
+        ) o.dpi = j.at("dpi").get<double>();
 }
 
 void to_json(nlohmann::json &j, const DefaultOutput &o) {
     j = nlohmann::json{{"width", o.width}, {"height", o.height}, {"refresh", o.refresh}, {"scale", o.scale}};
 }
 void from_json(const nlohmann::json &j, DefaultOutput &o) {
-    if (j.contains("width")) j.at("width").get_to(o.width);
-    if (j.contains("height")) j.at("height").get_to(o.height);
-    if (j.contains("refresh")) j.at("refresh").get_to(o.refresh);
-    if (j.contains("scale")) j.at("scale").get_to(o.scale);
+    if (j.contains("width")
+        ) j.at("width").get_to(o.width);
+    if (j.contains("height")
+        ) j.at("height").get_to(o.height);
+    if (j.contains("refresh")
+        ) j.at("refresh").get_to(o.refresh);
+    if (j.contains("scale")
+        ) j.at("scale").get_to(o.scale);
 }
 void to_json(nlohmann::json &j, const KeyboardConfig &k) {
     j = nlohmann::json{{"layouts", k.layouts}, {"variant", k.variant}, {"options", k.options}, {"repeat_rate", k.repeat_rate}, {"repeat_delay", k.repeat_delay}};
 }
 void from_json(const nlohmann::json &j, KeyboardConfig &k) {
-    if (j.contains("layouts")) j.at("layouts").get_to(k.layouts);
-    if (j.contains("variant")) j.at("variant").get_to(k.variant);
-    if (j.contains("options")) j.at("options").get_to(k.options);
-    if (j.contains("repeat_rate")) j.at("repeat_rate").get_to(k.repeat_rate);
-    if (j.contains("repeat_delay")) j.at("repeat_delay").get_to(k.repeat_delay);
+    if (j.contains("layouts")
+        ) j.at("layouts").get_to(k.layouts);
+    if (j.contains("variant")
+        ) j.at("variant").get_to(k.variant);
+    if (j.contains("options")
+        ) j.at("options").get_to(k.options);
+    if (j.contains("repeat_rate")
+        ) j.at("repeat_rate").get_to(k.repeat_rate);
+    if (j.contains("repeat_delay")
+        ) j.at("repeat_delay").get_to(k.repeat_delay);
 }
 void to_json(nlohmann::json &j, const MouseConfig &m) {
     j = nlohmann::json{
@@ -659,25 +735,39 @@ void to_json(nlohmann::json &j, const MouseConfig &m) {
     };
 }
 void from_json(const nlohmann::json &j, MouseConfig &m) {
-    if (j.contains("accel_profile")) j.at("accel_profile").get_to(m.accel_profile);
-    if (j.contains("speed")) j.at("speed").get_to(m.speed);
-    if (j.contains("natural_scroll")) j.at("natural_scroll").get_to(m.natural_scroll);
-    if (j.contains("scroll_factor")) j.at("scroll_factor").get_to(m.scroll_factor);
-    if (j.contains("tap_enabled")) j.at("tap_enabled").get_to(m.tap_enabled);
-    if (j.contains("tap_button_map")) j.at("tap_button_map").get_to(m.tap_button_map);
-    if (j.contains("middle_emulation")) j.at("middle_emulation").get_to(m.middle_emulation);
-    if (j.contains("left_handed")) j.at("left_handed").get_to(m.left_handed);
-    if (j.contains("dpi")) j.at("dpi").get_to(m.dpi);
+    if (j.contains("accel_profile")
+        ) j.at("accel_profile").get_to(m.accel_profile);
+    if (j.contains("speed")
+        ) j.at("speed").get_to(m.speed);
+    if (j.contains("natural_scroll")
+        ) j.at("natural_scroll").get_to(m.natural_scroll);
+    if (j.contains("scroll_factor")
+        ) j.at("scroll_factor").get_to(m.scroll_factor);
+    if (j.contains("tap_enabled")
+        ) j.at("tap_enabled").get_to(m.tap_enabled);
+    if (j.contains("tap_button_map")
+        ) j.at("tap_button_map").get_to(m.tap_button_map);
+    if (j.contains("middle_emulation")
+        ) j.at("middle_emulation").get_to(m.middle_emulation);
+    if (j.contains("left_handed")
+        ) j.at("left_handed").get_to(m.left_handed);
+    if (j.contains("dpi")
+        ) j.at("dpi").get_to(m.dpi);
 }
 void to_json(nlohmann::json &j, const Keybind &k) {
     j = nlohmann::json{{"mods", k.mods}, {"key", k.key}, {"action", k.action}};
-    if (!k.arg.empty()) j["arg"] = k.arg;
+    if (!k.arg.empty()
+        ) j["arg"] = k.arg;
 }
 void from_json(const nlohmann::json &j, Keybind &k) {
-    if (j.contains("mods")) j.at("mods").get_to(k.mods);
-    if (j.contains("key")) j.at("key").get_to(k.key);
-    if (j.contains("action")) j.at("action").get_to(k.action);
-    if (j.contains("arg")) j.at("arg").get_to(k.arg);
+    if (j.contains("mods")
+        ) j.at("mods").get_to(k.mods);
+    if (j.contains("key")
+        ) j.at("key").get_to(k.key);
+    if (j.contains("action")
+        ) j.at("action").get_to(k.action);
+    if (j.contains("arg")
+        ) j.at("arg").get_to(k.arg);
     // modsMask and keysym will be filled by Config::parseKeybinds
 }
 void to_json(nlohmann::json &j, const BspConfig &b) {
@@ -690,60 +780,91 @@ void to_json(nlohmann::json &j, const BspConfig &b) {
     };
 }
 void from_json(const nlohmann::json &j, BspConfig &b) {
-    if (j.contains("split_ratio")) j.at("split_ratio").get_to(b.split_ratio);
-    if (j.contains("opposite_orientation")) j.at("opposite_orientation").get_to(b.opposite_orientation);
-    if (j.contains("keep_ratio_on_drop")) j.at("keep_ratio_on_drop").get_to(b.keep_ratio_on_drop);
-    if (j.contains("min_ratio")) j.at("min_ratio").get_to(b.min_ratio);
-    if (j.contains("max_ratio")) j.at("max_ratio").get_to(b.max_ratio);
-    if (j.contains("bsp_split_ratio")) j.at("bsp_split_ratio").get_to(b.split_ratio);
-    if (j.contains("bsp_opposite")) j.at("bsp_opposite").get_to(b.opposite_orientation);
+    if (j.contains("split_ratio")
+        ) j.at("split_ratio").get_to(b.split_ratio);
+    if (j.contains("opposite_orientation")
+        ) j.at("opposite_orientation").get_to(b.opposite_orientation);
+    if (j.contains("keep_ratio_on_drop")
+        ) j.at("keep_ratio_on_drop").get_to(b.keep_ratio_on_drop);
+    if (j.contains("min_ratio")
+        ) j.at("min_ratio").get_to(b.min_ratio);
+    if (j.contains("max_ratio")
+        ) j.at("max_ratio").get_to(b.max_ratio);
+    if (j.contains("bsp_split_ratio")
+        ) j.at("bsp_split_ratio").get_to(b.split_ratio);
+    if (j.contains("bsp_opposite")
+        ) j.at("bsp_opposite").get_to(b.opposite_orientation);
 }
 
 void to_json(nlohmann::json &j, const GradientConfigData &g) {
     j = nlohmann::json{{"enabled", g.enabled}, {"colors", g.colors}, {"angle", g.angle}, {"animate", g.animate}};
 }
 void from_json(const nlohmann::json &j, GradientConfigData &g) {
-    if (j.contains("enabled")) j.at("enabled").get_to(g.enabled);
-    if (j.contains("colors")) j.at("colors").get_to(g.colors);
-    if (j.contains("angle")) j.at("angle").get_to(g.angle);
-    if (j.contains("animate")) j.at("animate").get_to(g.animate);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(g.enabled);
+    if (j.contains("colors")
+        ) j.at("colors").get_to(g.colors);
+    if (j.contains("angle")
+        ) j.at("angle").get_to(g.angle);
+    if (j.contains("animate")
+        ) j.at("animate").get_to(g.animate);
 }
 void to_json(nlohmann::json &j, const BorderConfigData &b) {
     j = nlohmann::json{{"enabled", b.enabled}, {"width", b.width}, {"radius", b.radius}, {"active_color", b.active_color}, {"inactive_color", b.inactive_color}, {"gradient", b.gradient}, {"animate", b.animate}, {"animation_duration", b.animation_duration}, {"animation_easing", b.animation_easing}};
 }
 void from_json(const nlohmann::json &j, BorderConfigData &b) {
-    if (j.contains("enabled")) j.at("enabled").get_to(b.enabled);
-    if (j.contains("width")) j.at("width").get_to(b.width);
-    if (j.contains("radius")) j.at("radius").get_to(b.radius);
-    if (j.contains("active_color")) j.at("active_color").get_to(b.active_color);
-    if (j.contains("inactive_color")) j.at("inactive_color").get_to(b.inactive_color);
-    if (j.contains("gradient")) j.at("gradient").get_to(b.gradient);
-    if (j.contains("animate")) j.at("animate").get_to(b.animate);
-    if (j.contains("animation_duration")) j.at("animation_duration").get_to(b.animation_duration);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(b.enabled);
+    if (j.contains("width")
+        ) j.at("width").get_to(b.width);
+    if (j.contains("radius")
+        ) j.at("radius").get_to(b.radius);
+    if (j.contains("active_color")
+        ) j.at("active_color").get_to(b.active_color);
+    if (j.contains("inactive_color")
+        ) j.at("inactive_color").get_to(b.inactive_color);
+    if (j.contains("gradient")
+        ) j.at("gradient").get_to(b.gradient);
+    if (j.contains("animate")
+        ) j.at("animate").get_to(b.animate);
+    if (j.contains("animation_duration")
+        ) j.at("animation_duration").get_to(b.animation_duration);
     else if (j.contains("duration")) j.at("duration").get_to(b.animation_duration);
-    if (j.contains("animation_easing")) j.at("animation_easing").get_to(b.animation_easing);
+    if (j.contains("animation_easing")
+        ) j.at("animation_easing").get_to(b.animation_easing);
     else if (j.contains("easing")) j.at("easing").get_to(b.animation_easing);
 }
 void to_json(nlohmann::json &j, const TitleBarConfigData &t) {
     j = nlohmann::json{{"enabled", t.enabled}, {"height", t.height}, {"color", t.color}, {"text_color", t.text_color}, {"font_size", t.font_size}, {"show_title", t.show_title}, {"show_buttons", t.show_buttons}};
 }
 void from_json(const nlohmann::json &j, TitleBarConfigData &t) {
-    if (j.contains("enabled")) j.at("enabled").get_to(t.enabled);
-    if (j.contains("height")) j.at("height").get_to(t.height);
-    if (j.contains("color")) j.at("color").get_to(t.color);
-    if (j.contains("text_color")) j.at("text_color").get_to(t.text_color);
-    if (j.contains("font_size")) j.at("font_size").get_to(t.font_size);
-    if (j.contains("show_title")) j.at("show_title").get_to(t.show_title);
-    if (j.contains("show_buttons")) j.at("show_buttons").get_to(t.show_buttons);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(t.enabled);
+    if (j.contains("height")
+        ) j.at("height").get_to(t.height);
+    if (j.contains("color")
+        ) j.at("color").get_to(t.color);
+    if (j.contains("text_color")
+        ) j.at("text_color").get_to(t.text_color);
+    if (j.contains("font_size")
+        ) j.at("font_size").get_to(t.font_size);
+    if (j.contains("show_title")
+        ) j.at("show_title").get_to(t.show_title);
+    if (j.contains("show_buttons")
+        ) j.at("show_buttons").get_to(t.show_buttons);
 }
 void to_json(nlohmann::json &j, const DecorationConfigData &d) {
     j = nlohmann::json{{"border", d.border}, {"titlebar", d.titlebar}, {"outer_gap", d.outer_gap}, {"inner_gap", d.inner_gap}};
 }
 void from_json(const nlohmann::json &j, DecorationConfigData &d) {
-    if (j.contains("border")) j.at("border").get_to(d.border);
-    if (j.contains("titlebar")) j.at("titlebar").get_to(d.titlebar);
-    if (j.contains("outer_gap")) j.at("outer_gap").get_to(d.outer_gap);
-    if (j.contains("inner_gap")) j.at("inner_gap").get_to(d.inner_gap);
+    if (j.contains("border")
+        ) j.at("border").get_to(d.border);
+    if (j.contains("titlebar")
+        ) j.at("titlebar").get_to(d.titlebar);
+    if (j.contains("outer_gap")
+        ) j.at("outer_gap").get_to(d.outer_gap);
+    if (j.contains("inner_gap")
+        ) j.at("inner_gap").get_to(d.inner_gap);
 }
 std::string toString(AnimationStyle s) {
     switch(s){
@@ -765,18 +886,30 @@ std::string toString(AnimationStyle s) {
 AnimationStyle styleFromString(const std::string &s, AnimationStyle fallback) {
     std::string t=s;
     for(char &c: t) c = std::tolower((unsigned char)c);
-    if(t=="fade") return AnimationStyle::Fade;
-    if(t=="scalein"||t=="scale") return AnimationStyle::ScaleIn;
-    if(t=="scaleout") return AnimationStyle::ScaleOut;
-    if(t=="slidetop"||t=="slide_top"||t=="top") return AnimationStyle::SlideTop;
-    if(t=="slidebottom"||t=="slide_bottom"||t=="bottom") return AnimationStyle::SlideBottom;
-    if(t=="slideleft"||t=="slide_left"||t=="left") return AnimationStyle::SlideLeft;
-    if(t=="slideright"||t=="slide_right"||t=="right") return AnimationStyle::SlideRight;
-    if(t=="pop") return AnimationStyle::Pop;
-    if(t=="slidefade"||t=="slide_fade") return AnimationStyle::SlideFade;
-    if(t=="slide") return AnimationStyle::Slide;
-    if(t=="cube") return AnimationStyle::Cube;
-    if(t=="fadewindowlayer"||t=="fade_window_layer") return AnimationStyle::FadeWindowLayer;
+    if(t=="fade")
+        return AnimationStyle::Fade;
+    if(t=="scalein"||t=="scale")
+        return AnimationStyle::ScaleIn;
+    if(t=="scaleout")
+        return AnimationStyle::ScaleOut;
+    if(t=="slidetop"||t=="slide_top"||t=="top")
+        return AnimationStyle::SlideTop;
+    if(t=="slidebottom"||t=="slide_bottom"||t=="bottom")
+        return AnimationStyle::SlideBottom;
+    if(t=="slideleft"||t=="slide_left"||t=="left")
+        return AnimationStyle::SlideLeft;
+    if(t=="slideright"||t=="slide_right"||t=="right")
+        return AnimationStyle::SlideRight;
+    if(t=="pop")
+        return AnimationStyle::Pop;
+    if(t=="slidefade"||t=="slide_fade")
+        return AnimationStyle::SlideFade;
+    if(t=="slide")
+        return AnimationStyle::Slide;
+    if(t=="cube")
+        return AnimationStyle::Cube;
+    if(t=="fadewindowlayer"||t=="fade_window_layer")
+        return AnimationStyle::FadeWindowLayer;
     return fallback;
 }
 
@@ -784,17 +917,23 @@ void to_json(nlohmann::json &j, const AnimationPreset &a) {
     j = nlohmann::json{{"enabled", a.enabled}, {"duration", a.duration}, {"easing", a.easing}};
 }
 void from_json(const nlohmann::json &j, AnimationPreset &a) {
-    if (j.contains("enabled")) j.at("enabled").get_to(a.enabled);
-    if (j.contains("duration")) j.at("duration").get_to(a.duration);
-    if (j.contains("easing")) j.at("easing").get_to(a.easing);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(a.enabled);
+    if (j.contains("duration")
+        ) j.at("duration").get_to(a.duration);
+    if (j.contains("easing")
+        ) j.at("easing").get_to(a.easing);
 }
 void to_json(nlohmann::json &j, const AnimDef &a) {
     j = nlohmann::json{{"enabled", a.enabled}, {"style", toString(a.style)}, {"duration", a.duration}, {"easing", a.easing}};
 }
 void from_json(const nlohmann::json &j, AnimDef &a) {
-    if (j.contains("enabled")) j.at("enabled").get_to(a.enabled);
-    if (j.contains("duration")) j.at("duration").get_to(a.duration);
-    if (j.contains("easing")) j.at("easing").get_to(a.easing);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(a.enabled);
+    if (j.contains("duration")
+        ) j.at("duration").get_to(a.duration);
+    if (j.contains("easing")
+        ) j.at("easing").get_to(a.easing);
     if (j.contains("style")) {
         std::string s; j.at("style").get_to(s);
         a.style = styleFromString(s, a.style);
@@ -803,10 +942,12 @@ void from_json(const nlohmann::json &j, AnimDef &a) {
 void to_json(nlohmann::json &j, const AnimPair &p) {
     j = nlohmann::json::object();
     j["start"] = p.start;
-    if (p.end) j["end"] = *p.end;
+    if (p.end)
+        j["end"] = *p.end;
 }
 void from_json(const nlohmann::json &j, AnimPair &p) {
-    if (j.contains("start")) j.at("start").get_to(p.start);
+    if (j.contains("start")
+        ) j.at("start").get_to(p.start);
     else {
         // allow direct AnimDef as pair (shorthand)
         try { p.start = j.get<AnimDef>(); } catch(...) {}
@@ -819,16 +960,25 @@ void from_json(const nlohmann::json &j, AnimPair &p) {
 std::vector<std::string> validateAnimationsConfig(const AnimationsConfig &a) {
     std::vector<std::string> errs;
     auto checkDef = [&](const std::string &id, const AnimDef &d, const std::string &which){
-        if(d.duration < 0 || d.duration > 10000) errs.push_back(id + "." + which + ".duration out of range 0..10000: " + std::to_string(d.duration));
+        if(d.duration < 0 || d.duration > 10000)
+            errs.push_back(id + "." + which + ".duration out of range 0..10000: " + std::to_string(d.duration));
         static const std::vector<std::string> validEasings = {"linear","easeInQuad","easeOutQuad","easeInOutQuad","easeInCubic","easeOutCubic","easeInOutCubic","easeInQuart","easeOutQuart","easeInOutQuart","easeOutBack","easeOutElastic"};
         bool found=false;
         std::string low=d.easing; for(char &c:low) c=std::tolower((unsigned char)c);
-        for(auto &v: validEasings){ std::string vl=v; for(char &c:vl) c=std::tolower((unsigned char)c); if(vl==low) {found=true;break;} }
-        if(!found && !d.easing.empty()) errs.push_back(id + "." + which + ".easing unknown: " + d.easing);
+        for(auto &v: validEasings){
+            std::string vl=v;
+            for(char &c:vl) c=std::tolower((unsigned char)c);
+            if(vl==low) {found=true;
+            break;
+            };
+        }
+        if(!found && !d.easing.empty()
+            ) errs.push_back(id + "." + which + ".easing unknown: " + d.easing);
     };
     for(auto &kv: a.pairs){
         checkDef(kv.first, kv.second.start, "start");
-        if(kv.second.end) checkDef(kv.first, *kv.second.end, "end");
+        if(kv.second.end)
+            checkDef(kv.first, *kv.second.end, "end");
         // reversible asserts: window, popup, workspaceSwitch, fullscreen, maximize, floating, layer must have end
         // but if start is disabled (off -> duration 0 / enabled false), we treat as fully disabled and don't require end
         const std::vector<std::string> reversible = {"window","popup","workspaceSwitch","fullscreen","maximize","floating","layer"};
@@ -836,7 +986,8 @@ std::vector<std::string> validateAnimationsConfig(const AnimationsConfig &a) {
         for(auto &r: reversible) if(r==kv.first) isRev=true;
         if(isRev && !kv.second.hasEnd()){
             bool startDisabled = !kv.second.start.enabled || kv.second.start.duration == 0;
-            if(!startDisabled) errs.push_back(kv.first + " is reversible and must have 'end' defined");
+            if(!startDisabled)
+                errs.push_back(kv.first + " is reversible and must have 'end' defined");
         }
     }
     return errs;
@@ -849,37 +1000,55 @@ void to_json(nlohmann::json &j, const AnimationsConfig &a) {
     // keep presets for backwards compat (write both)
     nlohmann::json presets = nlohmann::json::object();
     for (auto &kv : a.presets) presets[kv.first] = kv.second;
-    if(!a.presets.empty()) j["presets"] = presets;
+    if(!a.presets.empty()
+        ) j["presets"] = presets;
 }
 void from_json(const nlohmann::json &j, AnimationsConfig &a) {
-    if (j.contains("enabled")) j.at("enabled").get_to(a.enabled);
-    if (j.contains("speed")) j.at("speed").get_to(a.speed);
+    if (j.contains("enabled")
+        ) j.at("enabled").get_to(a.enabled);
+    if (j.contains("speed")
+        ) j.at("speed").get_to(a.speed);
     else if (j.contains("global_speed")) j.at("global_speed").get_to(a.speed);
-    if (j.contains("windowLayerOnly")) j.at("windowLayerOnly").get_to(a.windowLayerOnly);
+    if (j.contains("windowLayerOnly")
+        ) j.at("windowLayerOnly").get_to(a.windowLayerOnly);
     else if (j.contains("window_layer_only")) j.at("window_layer_only").get_to(a.windowLayerOnly);
     // new grouped pairs
     if (j.contains("pairs") && j["pairs"].is_object()) {
         for (auto &el : j["pairs"].items()) {
             try { a.pairs[el.key()] = el.value().get<AnimPair>(); } catch (const std::exception &e) {
                 // try AnimDef shorthand
-                try { AnimDef d = el.value().get<AnimDef>(); AnimPair p; p.start = d; a.pairs[el.key()] = p; } catch(...) {}
+                try {
+                    AnimDef d = el.value().get<AnimDef>();
+                    AnimPair p;
+                    p.start = d;
+                    a.pairs[el.key()] = p;
+                    } catch(...) {;
+                }
             }
         }
     }
     // also support flat pairs at top-level: "window": {start...}
     for (auto &el : j.items()) {
-        if (el.key()=="enabled"||el.key()=="speed"||el.key()=="global_speed"||el.key()=="presets"||el.key()=="pairs"||el.key()=="windowLayerOnly"||el.key()=="window_layer_only") continue;
+        if (el.key()
+            =="enabled"||el.key()=="speed"||el.key()=="global_speed"||el.key()=="presets"||el.key()=="pairs"||el.key()=="windowLayerOnly"||el.key()=="window_layer_only") continue;
         if (el.value().is_object() && (el.value().contains("start")||el.value().contains("end")||el.value().contains("style"))) {
             if (a.pairs.find(el.key())==a.pairs.end()) {
                 try { a.pairs[el.key()] = el.value().get<AnimPair>(); } catch(...) {
-                    try { AnimDef d = el.value().get<AnimDef>(); AnimPair p; p.start = d; a.pairs[el.key()] = p; } catch(...) {}
+                    try {
+                        AnimDef d = el.value().get<AnimDef>();
+                        AnimPair p;
+                        p.start = d;
+                        a.pairs[el.key()] = p;
+                        } catch(...) {;
+                    }
                 }
             }
         }
     }
     // legacy presets -> migrate into pairs for backwards compat
     auto ensurePair = [&](const std::string &pairKey, const std::string &openKey, const std::string &closeKey, AnimationStyle openStyle, AnimationStyle closeStyle){
-        if(a.pairs.find(pairKey)!=a.pairs.end()) return;
+        if(a.pairs.find(pairKey)
+            !=a.pairs.end()) return;
         auto itO = a.presets.find(openKey);
         auto itC = a.presets.find(closeKey);
         if(itO!=a.presets.end() || itC!=a.presets.end()){
@@ -903,28 +1072,33 @@ void from_json(const nlohmann::json &j, AnimationsConfig &a) {
     };
     // migrated presets can be under "presets" object or flat keys
     auto parsePreset = [&](const nlohmann::json &obj, const std::string &key){
-        if (!obj.contains(key)) return;
+        if (!obj.contains(key)
+            ) return;
         try { a.presets[key] = obj.at(key).get<AnimationPreset>(); } catch (...) {}
-        if (obj.at(key).is_boolean()) a.presets[key].enabled = obj.at(key).get<bool>();
+        if (obj.at(key)
+            .is_boolean()) a.presets[key].enabled = obj.at(key).get<bool>();
         else if (obj.at(key).is_number()) a.presets[key].duration = obj.at(key).get<int>();
     };
     if (j.contains("presets") && j["presets"].is_object()) {
         for (auto &el : j["presets"].items()) {
             try { a.presets[el.key()] = el.value().get<AnimationPreset>(); } catch (...) {
-                if (el.value().is_boolean()) a.presets[el.key()].enabled = el.value().get<bool>();
+                if (el.value()
+                    .is_boolean()) a.presets[el.key()].enabled = el.value().get<bool>();
             }
         }
     }
     const char* ids[] = {"border","window_open","window_close","workspace_switch","titlebar","fade"};
     for (auto *id : ids) parsePreset(j, id);
     for (auto &el : j.items()) {
-        if (el.key()=="enabled"||el.key()=="speed"||el.key()=="global_speed"||el.key()=="presets"||el.key()=="pairs"||el.key()=="windowLayerOnly"||el.key()=="window_layer_only") continue;
+        if (el.key()
+            =="enabled"||el.key()=="speed"||el.key()=="global_speed"||el.key()=="presets"||el.key()=="pairs"||el.key()=="windowLayerOnly"||el.key()=="window_layer_only") continue;
         if (el.value().is_object() && (el.value().contains("duration")||el.value().contains("enabled")||el.value().contains("easing"))) {
             if(a.presets.find(el.key())==a.presets.end()){
                 try { a.presets[el.key()] = el.value().get<AnimationPreset>(); } catch (...) {}
             }
         } else if (el.value().is_boolean()) {
-            if(a.presets.find(el.key())==a.presets.end()) a.presets[el.key()].enabled = el.value().get<bool>();
+            if(a.presets.find(el.key()
+                )==a.presets.end()) a.presets[el.key()].enabled = el.value().get<bool>();
         }
     }
     ensurePair("window","window_open","window_close", AnimationStyle::ScaleIn, AnimationStyle::ScaleOut);
@@ -943,8 +1117,10 @@ void from_json(const nlohmann::json &j, AnimationsConfig &a) {
             a.pairs[key]=p;
         }
     };
-    if(a.pairs.find("window")==a.pairs.end()) ensureDefaultPair("window", AnimationStyle::ScaleIn, AnimationStyle::ScaleOut, 250);
-    if(a.pairs.find("popup")==a.pairs.end()) ensureDefaultPair("popup", AnimationStyle::Fade, AnimationStyle::Fade, 180);
+    if(a.pairs.find("window")
+        ==a.pairs.end()) ensureDefaultPair("window", AnimationStyle::ScaleIn, AnimationStyle::ScaleOut, 250);
+    if(a.pairs.find("popup")
+        ==a.pairs.end()) ensureDefaultPair("popup", AnimationStyle::Fade, AnimationStyle::Fade, 180);
     if(a.pairs.find("tilingMove")==a.pairs.end()){
         AnimPair p; p.start.style=AnimationStyle::Slide; p.start.duration=200; p.start.easing="easeOutCubic"; a.pairs["tilingMove"]=p;
     }

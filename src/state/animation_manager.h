@@ -24,16 +24,21 @@ struct AnimSpec {
     bool running = false;
 
     double tFor(uint64_t nowMs) const noexcept {
-        if (!running || durationMs==0) return 1.0;
-        if (nowMs <= startMs) return 0.0;
+        if (!running || durationMs==0)
+            return 1.0;
+        if (nowMs <= startMs)
+            return 0.0;
         uint64_t elapsed = nowMs - startMs;
-        if (elapsed >= durationMs) return 1.0;
+        if (elapsed >= durationMs)
+            return 1.0;
         return double(elapsed) / double(durationMs);
     }
     Box sample(uint64_t nowMs) const noexcept {
         double t = tFor(nowMs);
         // Linear lerp — caller may ease via progress mapping (no extra copy)
-        auto lerp = [&](int a,int b){ return int(a + (b-a)*t); };
+        auto lerp = [&](int a,int b){
+            return int(a + (b-a)*t);
+        };
         return Box{lerp(from.x,to.x), lerp(from.y,to.y), lerp(from.width,to.width), lerp(from.height,to.height)};
     }
     float opacity(uint64_t nowMs) const noexcept {

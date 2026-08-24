@@ -55,7 +55,8 @@ void Output::renderFrame()
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_scene_output_send_frame_done(scene_output, &now);
 
-    if (fpsFrames == 0) fpsTimer = now;
+    if (fpsFrames == 0)
+        fpsTimer = now;
     fpsFrames++;
     fpsRendered++;
     double dt = (now.tv_sec - fpsTimer.tv_sec) +
@@ -131,7 +132,8 @@ struct wlr_output *Output::get() const
 
 void Output::setWorkspace(int ws)
 {
-    if (ws == workspace || ws < 1) return;
+    if (ws == workspace || ws < 1)
+        return;
     int old = workspace;
     workspace = ws;
     emit workspaceChanged(old, ws);

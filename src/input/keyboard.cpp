@@ -81,7 +81,8 @@ void Keyboard::applyConfig(const KeyboardConfig &cfg) {
     std::string variant = cfg.variant;
     std::string options = cfg.options;
     // xkbcommon requires layout string to be non-empty; fallback to "us" if empty
-    if (layouts.empty()) layouts = "us";
+    if (layouts.empty()
+        ) layouts = "us";
     names.rules = nullptr;
     names.model = nullptr;
     names.layout = layouts.c_str();
@@ -109,10 +110,14 @@ void Keyboard::applyConfig(const KeyboardConfig &cfg) {
     xkb_context_unref(context);
     int rate = cfg.repeat_rate;
     int delay = cfg.repeat_delay;
-    if (rate < 0) rate = 0;
-    if (rate > 100) rate = 100;
-    if (delay < 100) delay = 100;
-    if (delay > 2000) delay = 2000;
+    if (rate < 0)
+        rate = 0;
+    if (rate > 100)
+        rate = 100;
+    if (delay < 100)
+        delay = 100;
+    if (delay > 2000)
+        delay = 2000;
     wlr_keyboard_set_repeat_info(wlrKeyboard, rate, delay);
     wlr_log(WLR_INFO, "Keyboard config applied: layouts=%s variant=%s options=%s rate=%d delay=%d",
         cfg.layouts.c_str(), cfg.variant.c_str(), cfg.options.c_str(), rate, delay);

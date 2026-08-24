@@ -19,7 +19,8 @@ void State::unsubscribeOwner(void* owner) {
     // Zero-copy: move last element over erased slot instead of shifting all.
     for (size_t i = 0; i < subs.size(); ) {
         if (subs[i].owner == owner) {
-            if (i + 1 != subs.size()) subs[i] = std::move(subs.back());
+            if (i + 1 != subs.size()
+                ) subs[i] = std::move(subs.back());
             subs.pop_back();
         } else {
             ++i;
@@ -54,13 +55,18 @@ void State::dispatchToSubs(const VariantEvent& ev) {
     size_t n = subs.size();
     for (size_t i = 0; i < n; ++i) {
         // Note: if subs grew during dispatch, we ignore new entries this frame (deterministic)
-        if (i >= subs.size()) break;
+        if (i >= subs.size()
+            ) break;
         const Entry& e = subs[i];
-        if (!e.cb) continue;
-        if ((e.mask.kinds & uint32_t(k)) == 0) continue;
+        if (!e.cb)
+            continue;
+        if ((e.mask.kinds & uint32_t(k)
+            ) == 0) continue;
         if (e.mask.window) {
-            if (k != EventKind::Window) continue;
-            if (!winId || *winId != *e.mask.window) continue;
+            if (k != EventKind::Window)
+                continue;
+            if (!winId || *winId != *e.mask.window)
+                continue;
         }
         // Extra window filter via manager: if event is Window but manager says not live, skip wildcards?
         // We still deliver Destroy even if manager removed, so skip manager check.
@@ -69,12 +75,14 @@ void State::dispatchToSubs(const VariantEvent& ev) {
 }
 
 int State::nextWakeupMs() const {
-    if (nextDeadlineMs) return *nextDeadlineMs;
+    if (nextDeadlineMs)
+        return *nextDeadlineMs;
     // Ask sources for next wakeup without copying.
     int best = -1;
     for (auto* s : sources) {
         if (auto ms = s->nextWakeupMs()) {
-            if (best < 0 || *ms < best) best = *ms;
+            if (best < 0 || *ms < best)
+                best = *ms;
         }
     }
     return best;

@@ -7,15 +7,18 @@ KeyboardState::KeyboardState(IStateManager& s) : state_(&s) {
     // Callback captures this by raw ptr (lifetime tied to owner), no shared_ptr copy.
     sub_ = s.subscribe(this, SubMask{uint32_t(EventKind::Keyboard), std::nullopt},
         [this](const VariantEvent& ev){
-            if (auto* k = std::get_if<KeyEvent>(&ev)) onEvent(*k);
+            if (auto* k = std::get_if<KeyEvent>(&ev)
+                ) onEvent(*k);
         });
 }
 KeyboardState::~KeyboardState() = default;
 
 void KeyboardState::onEvent(const KeyEvent& e) {
-    if (!e.hasEvent) return;
+    if (!e.hasEvent)
+        return;
     mods_ = e.mods;
-    if (e.pressed) pressed_.insert(e.keycode);
+    if (e.pressed)
+        pressed_.insert(e.keycode);
     else pressed_.erase(e.keycode);
     // Repeat handling without extra copy: isRepeat flag already set by Engine.
 }

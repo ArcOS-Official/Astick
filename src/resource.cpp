@@ -12,7 +12,9 @@ QHash<uint64_t, uint64_t> Resource::s_nextId;
 bool Resource::s_loaded = false;
 
 Resource::Resource(QObject *parent) : QObject(parent) {}
-Resource::~Resource() { emit resourceDestroyed(this); }
+Resource::~Resource() {
+    emit resourceDestroyed(this);
+}
 
 uint64_t Resource::hashCombine(uint64_t a, uint64_t b) {
     a ^= b + 0x9e3779b97f4a7c15ULL + (a<<6) + (a>>2);
@@ -23,10 +25,12 @@ QString Resource::sessionPath() {
     QString cfgDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
     if (cfgDir.isEmpty()) {
         const char *xdg = getenv("XDG_CONFIG_HOME");
-        if (xdg && *xdg) cfgDir = QString::fromUtf8(xdg);
+        if (xdg && *xdg)
+            cfgDir = QString::fromUtf8(xdg);
         else {
             const char *home = getenv("HOME");
-            if (home) cfgDir = QString::fromUtf8(home) + "/.config";
+            if (home)
+                cfgDir = QString::fromUtf8(home) + "/.config";
             else cfgDir = QStringLiteral(".");
         }
     }
@@ -39,7 +43,8 @@ void Resource::loadNextIds() {
     s_loaded = true;
     QString path = sessionPath();
     QFile f(path);
-    if (!f.exists()) return;
+    if (!f.exists()
+        ) return;
     if (!f.open(QIODevice::ReadOnly)) {
         wlr_log(WLR_ERROR, "resource.load loadNextIds failed to open %s: %s", path.toUtf8().constData(), f.errorString().toUtf8().constData());
         return;
@@ -57,7 +62,8 @@ void Resource::loadNextIds() {
         bool okBase=false, okVal=false;
         uint64_t base = it.key().toULongLong(&okBase);
         uint64_t val = 0;
-        if (it.value().isDouble()) val = (uint64_t)it.value().toDouble();
+        if (it.value()
+            .isDouble()) val = (uint64_t)it.value().toDouble();
         else if (it.value().isString()) val = it.value().toString().toULongLong(&okVal);
         else val = (uint64_t)it.value().toInt();
         if (okBase) {
@@ -97,8 +103,10 @@ void Resource::resetForTests() {
 }
 
 uint64_t Resource::allocateId(uint64_t base) {
-    if (!s_loaded) loadNextIds();
-    if (s_nextId.capacity() == 0) s_nextId.reserve(16);
+    if (!s_loaded)
+        loadNextIds();
+    if (s_nextId.capacity()
+        == 0) s_nextId.reserve(16);
     uint64_t counter = s_nextId.value(base, 0);
     uint64_t id = base + (counter % ResourceKind::CountPerKind);
     counter++;

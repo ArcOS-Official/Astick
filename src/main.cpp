@@ -28,7 +28,8 @@ int main(int argc, char **argv) {
                 "  --test-state        Run StateManager interface test with FakeState (no Wayland)\n");
             return 0;
         }
-        if (arg == "--mode" && i + 1 < argc) mode = QString::fromUtf8(argv[++i]);
+        if (arg == "--mode" && i + 1 < argc)
+            mode = QString::fromUtf8(argv[++i]);
         else if (arg == "--config" && i + 1 < argc) configPath = QString::fromUtf8(argv[++i]);
         else if (arg == "--test-state") testState = true;
     }
@@ -38,7 +39,9 @@ int main(int argc, char **argv) {
         astick::FakeStateManager fake;
         bool called = false;
         auto sub = fake.subscribe(&fake, {uint32_t(astick::EventKind::Keyboard), std::nullopt},
-            [&](const astick::VariantEvent&){ called = true; });
+            [&](const astick::VariantEvent&){
+                called = true;
+            });
 
         astick::KeyEvent ke; ke.keycode = 30; ke.pressed = true; ke.hasEvent = true;
         astick::VariantEvent ev = ke;
