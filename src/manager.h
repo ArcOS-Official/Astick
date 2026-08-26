@@ -1,5 +1,5 @@
 /*
-    The main entry for Astick a wayland compositor for ArcOS.
+    The state machine and the manager of all windows.
     Copyright (C) 2026 Eyad Ahmed Ragheb
 
     This program is free software: you can redistribute it and/or modify
@@ -15,17 +15,3 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-
-#include <print>
-#include "engine.h"
-#include "manager.h"
-
-int main(void) {
-    std::println("Hello, world");
-    //Config config;
-    Compositor engine; // should take input later
-    //Manager mgr;
-    //engine.attach(mgr);
-
-    engine.run();
-}
